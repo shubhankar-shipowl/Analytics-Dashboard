@@ -14,7 +14,7 @@
   .chart-title {
     font-size: 1.5rem;
     font-weight: 600;
-    color: #2d3748;
+    color: var(--text-primary);
     margin-bottom: 20px;
   }
   
@@ -32,7 +32,7 @@
   .chart-item h4 {
     font-size: 1rem;
     font-weight: 500;
-    color: #4a5568;
+    color: var(--text-secondary);
     margin-bottom: 10px;
   }
   
@@ -50,15 +50,15 @@
   .chart-table td {
     padding: 12px;
     text-align: left;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--border-color);
   }
   
   .chart-table th {
-    background-color: #f7fafc;
+    background-color: var(--background-color);
     font-weight: 600;
-    color: #2d3748;
+    color: var(--text-primary);
   }
   
   .chart-table tr:hover {
-    background-color: #f7fafc;
+    background-color: var(--background-color);
   }

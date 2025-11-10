@@ -15,8 +15,10 @@ import {
     getTopCities,
     getTopProductsByPincode
   } from './utils/dataProcessor';
+import { loadData, isUsingBackend } from './utils/dataService';
 import KPISection from './components/KPISection';
 import Filters from './components/Filters';
+import FileUpload from './components/FileUpload';
 import OrderStatusChart from './components/OrderStatusChart';
 import PaymentMethodChart from './components/PaymentMethodChart';
 import FulfillmentPartnerChart from './components/FulfillmentPartnerChart';
@@ -52,21 +54,43 @@ function App() {
   });
 
   useEffect(() => {
-    // Load Excel data
-    loadExcelData('/data/ForwardOrders-1762582722-21819 (1).xlsx')
-      .then(loadedData => {
+    // Load data from backend API or local Excel file
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const loadedData = await loadData();
         setData(loadedData);
         setLoading(false);
-      })
-      .catch(err => {
+      } catch (err) {
         setError(err.message);
         setLoading(false);
         console.error('Error loading data:', err);
-      });
+      }
+    };
+    
+    fetchData();
   }, []);
 
+  // Handle file upload success
+  const handleUploadSuccess = async (result) => {
+    try {
+      setLoading(true);
+      // Reload data after successful upload
+      const loadedData = await loadData();
+      setData(loadedData);
+      setLoading(false);
+    } catch (err) {
+      console.error('Error reloading data after upload:', err);
+      setLoading(false);
+    }
+  };
+
+  const handleUploadError = (error) => {
+    console.error('Upload error:', error);
+  };
+
   useEffect(() => {
-    if (data.length === 0) {
+    if (!data || data.length === 0) {
       setFilteredData([]);
       return;
     }
@@ -172,6 +196,23 @@ function App() {
         <h2>Error Loading Data</h2>
         <p>{error}</p>
         <p>Please ensure the Excel file is located at /public/data/ForwardOrders-1762582722-21819 (1).xlsx</p>
+        <p style={{ marginTop: '15px' }}>
+          <strong>Or:</strong> Upload an Excel file using the upload section in the sidebar.
+        </p>
+      </div>
+    );
+  }
+
+  if (!data || data.length === 0) {
+    return (
+      <div className="error-container">
+        <h2>No Data Available</h2>
+        <p>No data found. Please:</p>
+        <ul style={{ textAlign: 'left', display: 'inline-block', marginTop: '10px' }}>
+          <li>Ensure the Excel file exists at <code>/public/data/ForwardOrders-1762582722-21819 (1).xlsx</code></li>
+          <li>Or upload an Excel file using the upload section in the sidebar</li>
+          <li>Or ensure the backend has data imported</li>
+        </ul>
       </div>
     );
   }
@@ -179,8 +220,11 @@ function App() {
   if (filteredData.length === 0) {
     return (
       <div className="error-container">
-        <h2>No Data Available</h2>
+        <h2>No Data Matches Filters</h2>
         <p>No data matches the current filters. Please adjust your filters.</p>
+        <p style={{ marginTop: '10px', fontSize: '0.9rem', color: '#666' }}>
+          Total records available: {data.length}
+        </p>
       </div>
     );
   }
@@ -189,10 +233,20 @@ function App() {
     <div className="App">
       <header className="app-header">
         <h1>📊 Order Dashboard</h1>
+        {isUsingBackend() && (
+          <p style={{ fontSize: '0.9rem', opacity: 0.9, marginTop: '5px' }}>
+            Connected to Backend API
+          </p>
+        )}
       </header>
 
       <div className="app-container">
         <aside className="sidebar">
+          <FileUpload 
+            onUploadSuccess={handleUploadSuccess}
+            onUploadError={handleUploadError}
+            backendConnected={isUsingBackend()}
+          />
           <Filters
             dateFilter={dateFilter}
             onDateFilterChange={setDateFilter}

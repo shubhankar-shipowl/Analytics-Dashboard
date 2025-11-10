@@ -111,17 +111,55 @@ public/data/ForwardOrders-1762582722-21819 (1).xlsx
 
 ## Running the Application
 
-### Development Mode
+### Running Both Backend and Frontend Together
 
-Start the development server:
+To start both the backend API and frontend React app simultaneously:
 
 ```bash
-npm start
+npm run start:all
 ```
 
-The application will automatically open in your browser at [http://localhost:3000](http://localhost:3000).
+Or for development mode with auto-reload:
 
-The page will reload automatically when you make changes to the code. You will see any lint errors in the console.
+```bash
+npm run dev:all
+```
+
+### Running Separately
+
+**Backend Only:**
+```bash
+npm run backend
+```
+
+**Frontend Only:**
+```bash
+npm run frontend
+```
+
+**Backend (Development with auto-reload):**
+```bash
+npm run backend:dev
+```
+
+**Frontend (Development):**
+```bash
+npm run frontend:dev
+```
+
+### Alternative: Using Script Files
+
+You can also use the provided script files:
+
+**Windows (PowerShell):**
+```powershell
+.\start-all.ps1
+```
+
+**Windows (Command Prompt):**
+```cmd
+start-all.bat
+```
 
 ### Build for Production
 
