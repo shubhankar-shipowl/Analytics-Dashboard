@@ -6,67 +6,104 @@ import { analyticsAPI, ordersAPI, importAPI, healthCheck } from './api';
 let useBackend = false;
 let backendChecked = false;
 
-const checkBackend = async () => {
-  if (backendChecked) return useBackend;
+const checkBackend = async (forceRefresh = false) => {
+  if (backendChecked && !forceRefresh) return useBackend;
   
   try {
-    await healthCheck();
-    useBackend = true;
-    console.log('✅ Backend API connected - using server data');
+    const response = await healthCheck();
+    if (response && response.success) {
+      useBackend = true;
+      console.log('✅ Backend API connected - using MySQL database');
+      backendChecked = true;
+      return true;
+    } else {
+      useBackend = false;
+      console.log('⚠️ Backend health check failed');
+      backendChecked = true;
+      return false;
+    }
   } catch (error) {
     useBackend = false;
-    console.log('⚠️ Backend API not available - using local Excel file');
+    console.log('⚠️ Backend API not available:', error.message);
+    backendChecked = true;
+    return false;
   }
-  backendChecked = true;
-  return useBackend;
+};
+
+// Force refresh backend check (useful after uploads)
+export const refreshBackendCheck = () => {
+  backendChecked = false;
+  useBackend = false;
 };
 
 // Load data from backend or local file
-export const loadData = async () => {
-  const isBackendAvailable = await checkBackend();
+export const loadData = async (forceRefresh = false) => {
+  console.log('🔄 Starting data load...');
+  
+  // Always try backend first - database is the primary source
+  const isBackendAvailable = await checkBackend(forceRefresh);
   
   if (isBackendAvailable) {
     try {
-      // Load from backend API
-      const response = await ordersAPI.getAll({ limit: 10000 });
-      if (response.success && response.data && Array.isArray(response.data) && response.data.length > 0) {
-        // Transform backend data to match frontend format
-        const transformedData = response.data.map(order => ({
-          order_id: order.order_id,
-          order_date: order.order_date ? new Date(order.order_date) : null,
-          order_status: order.order_status || order.status,
-          product: order.product_name || order.product,
-          'Product Name': order.product_name || order.product,
-          sku: order.sku,
-          pincode: order.pincode,
-          'Pincode': order.pincode,
-          city: order.city,
-          amount: order.order_value || order.amount,
-          order_value: order.order_value || order.amount,
-          payment_method: order.payment_method,
-          fulfillment_partner: order.fulfillment_partner,
-          'Fulfilled By': order.fulfillment_partner,
-          quantity: order.quantity || 1
-        }));
-        
-        if (transformedData.length > 0) {
-          console.log(`✅ Loaded ${transformedData.length} orders from backend`);
+      console.log('📡 Fetching data from MySQL database...');
+      // Load from backend API - use a large limit to get all data
+      // For very large datasets, consider implementing pagination
+      const response = await ordersAPI.getAll({ limit: 1000000 });
+      
+      if (response && response.success && response.data) {
+        if (Array.isArray(response.data) && response.data.length > 0) {
+          // Transform backend data to match frontend format
+          console.log(`📊 Transforming ${response.data.length} records from database...`);
+          const transformedData = response.data.map(order => ({
+            order_id: order.order_id,
+            order_date: order.order_date ? new Date(order.order_date) : null,
+            order_status: order.order_status || order.status,
+            product: order.product_name || order.product,
+            'Product Name': order.product_name || order.product,
+            sku: order.sku,
+            pincode: order.pincode,
+            'Pincode': order.pincode,
+            city: order.city,
+            amount: order.order_value || order.amount,
+            order_value: order.order_value || order.amount,
+            payment_method: order.payment_method,
+            fulfillment_partner: order.fulfillment_partner,
+            'Fulfilled By': order.fulfillment_partner,
+            quantity: order.quantity || 1
+          }));
+          
+          console.log(`✅ Successfully loaded ${transformedData.length} orders from MySQL database`);
           return transformedData;
+        } else {
+          console.log('⚠️ Database is empty (0 records). Please upload data through the upload section.');
+          // Return empty array if database is empty
+          return [];
         }
       } else {
-        console.log('⚠️ Backend returned empty data, falling back to local Excel file');
+        console.warn('⚠️ Backend response format unexpected:', response);
+        throw new Error('Invalid response format from backend');
       }
     } catch (error) {
-      console.error('Error loading from backend, falling back to local file:', error);
-      useBackend = false;
+      console.error('❌ Error loading from database:', error.message);
+      // NEVER fall back to Excel if backend is available
+      // Database is the single source of truth
+      throw new Error(
+        `Failed to fetch data from MySQL database: ${error.message}. ` +
+        `Please ensure:\n` +
+        `1. Backend server is running (http://localhost:5000)\n` +
+        `2. Database connection is configured correctly\n` +
+        `3. Database has data (upload Excel file if needed)`
+      );
     }
   }
   
-  // Fallback to local Excel file
-  console.log('📂 Loading data from local Excel file...');
+  // Only fallback to local Excel file if backend is completely unavailable
+  // This is for development/testing when backend is not running
+  console.log('📂 Backend not available, loading data from local Excel file (fallback mode)...');
+  console.log('⚠️ Note: For production, always use the backend with MySQL database.');
   try {
     const excelData = await loadExcelData('/data/ForwardOrders-1762582722-21819 (1).xlsx');
-    console.log(`✅ Loaded ${excelData.length} orders from Excel file`);
+    console.log(`✅ Loaded ${excelData.length} orders from Excel file (fallback)`);
     return excelData;
   } catch (error) {
     console.error('Error loading Excel file:', error);
@@ -76,7 +113,15 @@ export const loadData = async () => {
       console.log(`✅ Loaded ${excelData.length} orders from Excel file (alternative path)`);
       return excelData;
     } catch (altError) {
-      throw new Error(`Failed to load data: ${error.message}. Please ensure the Excel file exists in the public/data folder or upload it through the upload section.`);
+      throw new Error(
+        `Unable to load data:\n` +
+        `- Backend is not available\n` +
+        `- Excel file not found\n\n` +
+        `Please:\n` +
+        `1. Start the backend server: npm run dev\n` +
+        `2. Or upload an Excel file through the upload section\n` +
+        `3. Or ensure the Excel file exists in public/data/ folder`
+      );
     }
   }
 };
@@ -93,7 +138,9 @@ export const getKPIs = async (filters = {}) => {
           totalOrders: response.data.totalOrders || 0,
           totalRevenue: response.data.totalRevenue || 0,
           avgOrderValue: response.data.averageOrderValue || 0,
-          totalCOD: response.data.totalCOD || 0,
+          topPincode: response.data.topPincode || 'N/A',
+          topPincodeRatio: response.data.topPincodeRatio || 0,
+          topPincodeDeliveredCount: response.data.topPincodeDeliveredCount || 0,
           totalRTO: response.data.totalRTO || 0,
           totalRTS: response.data.totalRTS || 0
         };

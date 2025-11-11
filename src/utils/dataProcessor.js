@@ -280,42 +280,45 @@ export const filterByDateRange = (data, range, customStartDate = null, customEnd
   });
 };
 
-// Helper function to check if status counts as "delivered" (only "delivered" status)
+// Helper function to get status from row (handles both 'status' and 'order_status' fields)
+const getStatus = (row) => {
+  return row.status || row.order_status || '';
+};
+
+// Helper function to check if status counts as "delivered" (exactly "delivered" status, case-insensitive)
 const isDeliveredStatus = (status) => {
   const statusLower = String(status || '').toLowerCase().trim();
-  return statusLower === 'delivered' || statusLower.includes('delivered');
+  // Only match exact "delivered" status, not partial matches like "not delivered" or "undelivered"
+  return statusLower === 'delivered';
+};
+
+// Helper function to check if an order is cancelled
+const isCancelledStatus = (status) => {
+  const statusLower = String(status || '').toLowerCase().trim();
+  return statusLower === 'cancelled' || statusLower.includes('cancel');
 };
 
 // Helper function to check if status counts in total orders
-// Total orders = RTO+RTS+Dispatched+RTO-IT+RTO-dispatched+RTO pending+Lost+delivered
+// Total orders = RTS + RTO + Dispatched + NDR + RTO-IT + RTO-I + RTO-II + RTO-Dispatched + RTO Pending + Lost + Delivered
 const isCountedInTotalOrders = (status) => {
   const statusLower = String(status || '').toLowerCase().trim();
   
-  if (statusLower === 'delivered' || statusLower.includes('delivered')) {
-    return true;
-  }
-  if (statusLower === 'rto' || statusLower.includes('rto')) {
-    return true;
-  }
-  if (statusLower === 'rts' || statusLower.includes('rts')) {
-    return true;
-  }
-  if (statusLower.includes('dispatched')) {
-    return true;
-  }
-  if (statusLower.includes('rto it') || statusLower.includes('rto-it')) {
-    return true;
-  }
-  if (statusLower.includes('rto dispatched') || statusLower.includes('rto-dispatched')) {
-    return true;
-  }
-  if (statusLower.includes('rto pending')) {
-    return true;
-  }
-  if (statusLower.includes('lost')) {
-    return true;
-  }
+  // Exact matches
+  if (statusLower === 'rts') return true;
+  if (statusLower === 'rto') return true;
+  if (statusLower === 'delivered') return true;
+  if (statusLower === 'lost') return true;
+  if (statusLower === 'ndr') return true;
+  if (statusLower === 'dispatched') return true;
   
+  // Partial matches for compound statuses
+  if (statusLower.includes('rto-it') || statusLower.includes('rto it')) return true;
+  if (statusLower.includes('rto-i') && !statusLower.includes('rto-it')) return true; // RTO-I (but not RTO-IT)
+  if (statusLower.includes('rto-ii') || statusLower.includes('rto ii')) return true;
+  if (statusLower.includes('rto-dispatched') || statusLower.includes('rto dispatched')) return true;
+  if (statusLower.includes('rto pending') || statusLower.includes('rto-pending')) return true;
+  
+  // Exclude all other statuses (cancelled, booked, manifested, picked, in-transit, out for delivery, etc.)
   return false;
 };
 
@@ -326,44 +329,41 @@ export const calculateKPIs = (data) => {
       totalOrders: 0,
       totalRevenue: 0,
       avgOrderValue: 0,
-      totalCOD: 0,
+      topPincode: 'N/A',
+      topPincodeRatio: 0,
       totalRTO: 0,
       totalRTS: 0
     };
   }
 
-  // Total orders = RTO+RTS+Dispatched+RTO-IT+RTO-dispatched+RTO pending+Lost+delivered
-  const validOrders = data.filter(row => isCountedInTotalOrders(row.status));
+  // Total orders = RTS + RTO + Dispatched + NDR + RTO-IT + RTO-I + RTO-II + RTO-Dispatched + RTO Pending + Lost + Delivered
+  const validOrders = data.filter(row => isCountedInTotalOrders(getStatus(row)));
   const totalOrders = validOrders.length;
   const totalRevenue = validOrders.reduce((sum, row) => sum + (parseFloat(row.amount) || 0), 0);
   const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
 
-  // Count COD orders
-  const totalCOD = data.reduce((sum, row) => {
-    const paymentMethod = String(row.payment_method || '').toLowerCase();
-    if (paymentMethod.includes('cod') || paymentMethod === 'cod') {
-      return sum + (parseFloat(row.amount) || 0);
-    }
-    return sum;
-  }, 0);
+  // Get Top Pincode by Delivery Ratio
+  const topPincodeData = getTopPincodeByDelivery(data);
 
   // Count RTO (Return to Origin) orders
   const totalRTO = data.filter(row => {
-    const status = String(row.status || '').toLowerCase();
+    const status = String(getStatus(row)).toLowerCase();
     return status.includes('rto') || status.includes('return') || status === 'rto';
   }).length;
 
-  // Count RTS (Return to Sender) orders
+  // Count RTS (Return to Sender) orders - only exact "RTS" status
   const totalRTS = data.filter(row => {
-    const status = String(row.status || '').toLowerCase();
-    return status.includes('rts') || status === 'rts';
+    const status = String(getStatus(row)).toLowerCase().trim();
+    return status === 'rts';
   }).length;
 
   return {
     totalOrders,
     totalRevenue,
     avgOrderValue,
-    totalCOD,
+    topPincode: topPincodeData.pincode,
+    topPincodeRatio: topPincodeData.ratio,
+    topPincodeDeliveredCount: topPincodeData.deliveredCount,
     totalRTO,
     totalRTS
   };
@@ -371,35 +371,45 @@ export const calculateKPIs = (data) => {
 
 // Calculate Delivery Ratio
 // Delivery ratio = (delivered / total orders) * 100
-// Total orders = all orders in the dataset
+// Total orders = RTS + RTO + Dispatched + NDR + RTO-IT + RTO-Dispatched + RTO Pending + Lost + Delivered
 export const getDeliveryRatio = (data) => {
   if (!data || data.length === 0) return { ratio: 0, deliveredCount: 0, totalOrders: 0 };
 
-  // Total orders = all orders
-  const totalOrders = data.length;
+  // Total orders = RTS + RTO + Dispatched + NDR + RTO-IT + RTO-I + RTO-II + RTO-Dispatched + RTO Pending + Lost + Delivered
+  const totalOrders = data.filter(row => isCountedInTotalOrders(getStatus(row))).length;
   
-  // Count only "delivered" status from all orders
-  const deliveredCount = data.filter(row => isDeliveredStatus(row.status)).length;
+  // Count only "delivered" status from valid orders
+  const deliveredCount = data.filter(row => {
+    const status = getStatus(row);
+    return isCountedInTotalOrders(status) && isDeliveredStatus(status);
+  }).length;
 
   const ratio = totalOrders > 0 ? (deliveredCount / totalOrders) * 100 : 0;
 
   return {
-    ratio: ratio.toFixed(2),
+    ratio: parseFloat(ratio.toFixed(2)),
     deliveredCount,
     totalOrders,
-    percentage: ratio.toFixed(2)
+    percentage: parseFloat(ratio.toFixed(2))
   };
 };
 
 // Calculate Delivery Ratio by Fulfillment Partner
 // Delivery ratio = (delivered / total orders) * 100 per partner
-// Total orders = all orders per partner
+// Total orders = RTS + RTO + Dispatched + NDR + RTO-IT + RTO-Dispatched + RTO Pending + Lost + Delivered per partner
 export const getDeliveryRatioByPartner = (data) => {
   if (!data || data.length === 0) return [];
 
   const partnerStats = {};
   
   data.forEach(row => {
+    const status = getStatus(row);
+    
+    // Only count valid order statuses
+    if (!isCountedInTotalOrders(status)) {
+      return;
+    }
+    
     // Try multiple possible field names for fulfillment partner
     const partner = String(
       row.fulfillment_partner || 
@@ -418,11 +428,11 @@ export const getDeliveryRatioByPartner = (data) => {
       };
     }
     
-    // Count all orders for this partner
+    // Count all non-cancelled orders for this partner
     partnerStats[partner].totalOrders++;
     
     // Count delivered orders for this partner
-    if (isDeliveredStatus(row.status)) {
+    if (isDeliveredStatus(status)) {
       partnerStats[partner].deliveredCount++;
     }
   });
@@ -431,7 +441,7 @@ export const getDeliveryRatioByPartner = (data) => {
   return Object.values(partnerStats)
     .map(stat => ({
       ...stat,
-      ratio: stat.totalOrders > 0 ? ((stat.deliveredCount / stat.totalOrders) * 100).toFixed(2) : '0.00',
+      ratio: stat.totalOrders > 0 ? parseFloat(((stat.deliveredCount / stat.totalOrders) * 100).toFixed(2)) : 0,
       ratioValue: stat.totalOrders > 0 ? (stat.deliveredCount / stat.totalOrders) * 100 : 0
     }))
     .sort((a, b) => parseFloat(b.ratio) - parseFloat(a.ratio));
@@ -443,7 +453,7 @@ export const getOrderStatusDistribution = (data) => {
 
   const statusCount = {};
   data.forEach(row => {
-    const status = String(row.status || 'Unknown').trim();
+    const status = String(getStatus(row) || 'Unknown').trim();
     statusCount[status] = (statusCount[status] || 0) + 1;
   });
 
@@ -630,4 +640,67 @@ export const getTopProductsByPincode = (data, pincode, limit = 10) => {
     return String(rowPincode).trim() === String(pincode).trim();
   });
   return getTopProducts(filteredData, 'orders', limit);
+};
+
+// Get Top Pincode by Number of Delivered Orders
+// Returns the pincode with the highest number of delivered orders
+export const getTopPincodeByDelivery = (data) => {
+  if (!data || data.length === 0) return { pincode: 'N/A', ratio: 0, deliveredCount: 0, totalOrders: 0 };
+
+  const pincodeStats = {};
+  
+  data.forEach(row => {
+    const status = getStatus(row);
+    
+    // Only count valid order statuses
+    if (!isCountedInTotalOrders(status)) {
+      return;
+    }
+    
+    const pincode = String(row.pincode || row['Pincode'] || 'Unknown').trim();
+    
+    if (!pincodeStats[pincode]) {
+      pincodeStats[pincode] = {
+        pincode,
+        totalOrders: 0,
+        deliveredCount: 0,
+        ratio: 0
+      };
+    }
+    
+    // Count all non-cancelled orders for this pincode
+    pincodeStats[pincode].totalOrders++;
+    
+    // Count delivered orders for this pincode
+    if (isDeliveredStatus(status)) {
+      pincodeStats[pincode].deliveredCount++;
+    }
+  });
+
+  // Sort by delivered count (highest first), then by total orders as tiebreaker
+  const pincodesSorted = Object.values(pincodeStats)
+    .filter(stat => stat.totalOrders > 0) // Only include pincodes with orders
+    .sort((a, b) => {
+      // Primary sort: by delivered count (descending)
+      if (b.deliveredCount !== a.deliveredCount) {
+        return b.deliveredCount - a.deliveredCount;
+      }
+      // Secondary sort: by total orders (descending) as tiebreaker
+      return b.totalOrders - a.totalOrders;
+    });
+
+  if (pincodesSorted.length === 0) {
+    return { pincode: 'N/A', ratio: 0, deliveredCount: 0, totalOrders: 0 };
+  }
+
+  const topPincode = pincodesSorted[0];
+  // Calculate ratio for display
+  const ratio = topPincode.totalOrders > 0 ? (topPincode.deliveredCount / topPincode.totalOrders) * 100 : 0;
+  
+  return {
+    pincode: topPincode.pincode,
+    ratio: parseFloat(ratio.toFixed(2)),
+    deliveredCount: topPincode.deliveredCount,
+    totalOrders: topPincode.totalOrders
+  };
 };

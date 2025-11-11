@@ -2,6 +2,17 @@
 
 Node.js and MySQL backend API for the Analytics Dashboard.
 
+## ⚠️ Architecture: Database-Only
+
+**This backend is database-only. It does NOT read from Excel files for serving data.**
+
+- All API endpoints query the MySQL database
+- Excel files are ONLY used for importing data INTO the database
+- No fallback to Excel files for data retrieval
+- Database is the single source of truth
+
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed architecture documentation.
+
 ## Features
 
 - RESTful API endpoints for orders management

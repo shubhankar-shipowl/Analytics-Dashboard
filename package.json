@@ -29,7 +29,9 @@
     "dev:all": "concurrently -n \"backend,frontend\" -c \"cyan,yellow\" \"npm run backend:dev\" \"npm run frontend:dev\"",
     "stop": "node -e \"const {execSync} = require('child_process'); try { execSync('taskkill /F /IM node.exe', {stdio: 'ignore'}); } catch(e) {}\"",
     "clean": "powershell -ExecutionPolicy Bypass -File ./stop-and-clean.ps1",
-    "clean:cache": "npm cache clean --force && rmdir /s /q build 2>nul || true"
+    "clean:cache": "npm cache clean --force && rmdir /s /q build 2>nul || true",
+    "import:excel": "cd backend && npm run import:excel",
+    "import:excel:clear": "cd backend && npm run import:excel:clear"
   },
   "eslintConfig": {
     "extends": [

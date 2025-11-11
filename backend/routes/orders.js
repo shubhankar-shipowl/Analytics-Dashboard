@@ -3,6 +3,14 @@ const router = express.Router();
 const Order = require('../models/Order');
 const logger = require('../utils/logger');
 
+/**
+ * Orders API Routes
+ * 
+ * NOTE: All endpoints query the MySQL database ONLY.
+ * This backend does NOT read from Excel files for serving data.
+ * Excel files are only used for importing data INTO the database.
+ */
+
 // Get all orders with optional filters
 router.get('/', async (req, res) => {
   try {

@@ -3,6 +3,14 @@ const router = express.Router();
 const { query } = require('../config/database');
 const logger = require('../utils/logger');
 
+/**
+ * Analytics API Routes
+ * 
+ * NOTE: All endpoints query the MySQL database ONLY.
+ * This backend does NOT read from Excel files for serving data.
+ * All analytics are calculated from database queries.
+ */
+
 // Get KPIs (Key Performance Indicators)
 router.get('/kpis', async (req, res) => {
   try {
@@ -12,11 +20,11 @@ router.get('/kpis', async (req, res) => {
     const params = [];
 
     if (startDate) {
-      whereClause += ' AND order_date >= ?';
+      whereClause += ' AND DATE(order_date) >= DATE(?)';
       params.push(startDate);
     }
     if (endDate) {
-      whereClause += ' AND order_date <= ?';
+      whereClause += ' AND DATE(order_date) <= DATE(?)';
       params.push(endDate);
     }
     if (product) {
@@ -28,13 +36,56 @@ router.get('/kpis', async (req, res) => {
       params.push(pincode);
     }
 
-    // Total Orders (excluding certain statuses if needed)
-    const totalOrdersSql = `SELECT COUNT(*) as total FROM orders ${whereClause}`;
+    // Total Orders = RTS + RTO + Dispatched + NDR + RTO-IT + RTO-I + RTO-II + RTO-Dispatched + RTO Pending + Lost + Delivered
+    const totalOrdersSql = `
+      SELECT COUNT(*) as total 
+      FROM orders 
+      ${whereClause} 
+      AND (
+        LOWER(TRIM(order_status)) = 'rts' OR
+        LOWER(TRIM(order_status)) = 'rto' OR
+        LOWER(TRIM(order_status)) = 'delivered' OR
+        LOWER(TRIM(order_status)) = 'lost' OR
+        LOWER(TRIM(order_status)) = 'ndr' OR
+        LOWER(TRIM(order_status)) = 'dispatched' OR
+        LOWER(TRIM(order_status)) LIKE '%rto-it%' OR
+        LOWER(TRIM(order_status)) LIKE '%rto it%' OR
+        (LOWER(TRIM(order_status)) LIKE '%rto-i%' AND LOWER(TRIM(order_status)) NOT LIKE '%rto-it%') OR
+        LOWER(TRIM(order_status)) LIKE '%rto-ii%' OR
+        LOWER(TRIM(order_status)) LIKE '%rto ii%' OR
+        LOWER(TRIM(order_status)) LIKE '%rto-dispatched%' OR
+        LOWER(TRIM(order_status)) LIKE '%rto dispatched%' OR
+        LOWER(TRIM(order_status)) LIKE '%rto pending%' OR
+        LOWER(TRIM(order_status)) LIKE '%rto-pending%'
+      )
+    `;
     const totalOrdersResult = await query(totalOrdersSql, params);
     const totalOrders = totalOrdersResult && totalOrdersResult.length > 0 ? totalOrdersResult[0].total : 0;
 
-    // Total Revenue
-    const revenueSql = `SELECT SUM(order_value) as total FROM orders ${whereClause} AND order_value IS NOT NULL`;
+    // Total Revenue (only from valid order statuses)
+    const revenueSql = `
+      SELECT SUM(order_value) as total 
+      FROM orders 
+      ${whereClause} 
+      AND order_value IS NOT NULL 
+      AND (
+        LOWER(TRIM(order_status)) = 'rts' OR
+        LOWER(TRIM(order_status)) = 'rto' OR
+        LOWER(TRIM(order_status)) = 'delivered' OR
+        LOWER(TRIM(order_status)) = 'lost' OR
+        LOWER(TRIM(order_status)) = 'ndr' OR
+        LOWER(TRIM(order_status)) = 'dispatched' OR
+        LOWER(TRIM(order_status)) LIKE '%rto-it%' OR
+        LOWER(TRIM(order_status)) LIKE '%rto it%' OR
+        (LOWER(TRIM(order_status)) LIKE '%rto-i%' AND LOWER(TRIM(order_status)) NOT LIKE '%rto-it%') OR
+        LOWER(TRIM(order_status)) LIKE '%rto-ii%' OR
+        LOWER(TRIM(order_status)) LIKE '%rto ii%' OR
+        LOWER(TRIM(order_status)) LIKE '%rto-dispatched%' OR
+        LOWER(TRIM(order_status)) LIKE '%rto dispatched%' OR
+        LOWER(TRIM(order_status)) LIKE '%rto pending%' OR
+        LOWER(TRIM(order_status)) LIKE '%rto-pending%'
+      )
+    `;
     const revenueResult = await query(revenueSql, params);
     const totalRevenue = revenueResult && revenueResult.length > 0 ? (revenueResult[0].total || 0) : 0;
 
@@ -51,10 +102,55 @@ router.get('/kpis', async (req, res) => {
     const rtoResult = await query(rtoSql, params);
     const totalRTO = rtoResult && rtoResult.length > 0 ? rtoResult[0].total : 0;
 
-    // Total RTS
-    const rtsSql = `SELECT COUNT(*) as total FROM orders ${whereClause} AND order_status = 'RTS'`;
+    // Total RTS - only exact "RTS" status (case-insensitive)
+    const rtsSql = `SELECT COUNT(*) as total FROM orders ${whereClause} AND LOWER(TRIM(order_status)) = 'rts'`;
     const rtsResult = await query(rtsSql, params);
     const totalRTS = rtsResult && rtsResult.length > 0 ? rtsResult[0].total : 0;
+
+    // Get Top Pincode by Number of Delivered Orders
+    // Total orders = RTS + RTO + Dispatched + NDR + RTO-IT + RTO-Dispatched + RTO Pending + Lost + Delivered
+    // Delivered = orders with status exactly 'delivered' (case-insensitive)
+    const topPincodeSql = `
+      SELECT 
+        pincode,
+        COUNT(*) as totalOrders,
+        SUM(CASE WHEN LOWER(TRIM(order_status)) = 'delivered' THEN 1 ELSE 0 END) as deliveredCount,
+        (SUM(CASE WHEN LOWER(TRIM(order_status)) = 'delivered' THEN 1 ELSE 0 END) / COUNT(*)) * 100 as deliveryRatio
+      FROM orders 
+      ${whereClause}
+      AND pincode IS NOT NULL
+      AND (
+        LOWER(TRIM(order_status)) = 'rts' OR
+        LOWER(TRIM(order_status)) = 'rto' OR
+        LOWER(TRIM(order_status)) = 'delivered' OR
+        LOWER(TRIM(order_status)) = 'lost' OR
+        LOWER(TRIM(order_status)) = 'ndr' OR
+        LOWER(TRIM(order_status)) = 'dispatched' OR
+        LOWER(TRIM(order_status)) LIKE '%rto-it%' OR
+        LOWER(TRIM(order_status)) LIKE '%rto it%' OR
+        (LOWER(TRIM(order_status)) LIKE '%rto-i%' AND LOWER(TRIM(order_status)) NOT LIKE '%rto-it%') OR
+        LOWER(TRIM(order_status)) LIKE '%rto-ii%' OR
+        LOWER(TRIM(order_status)) LIKE '%rto ii%' OR
+        LOWER(TRIM(order_status)) LIKE '%rto-dispatched%' OR
+        LOWER(TRIM(order_status)) LIKE '%rto dispatched%' OR
+        LOWER(TRIM(order_status)) LIKE '%rto pending%' OR
+        LOWER(TRIM(order_status)) LIKE '%rto-pending%'
+      )
+      GROUP BY pincode
+      HAVING COUNT(*) > 0
+      ORDER BY deliveredCount DESC, totalOrders DESC
+      LIMIT 1
+    `;
+    const topPincodeResult = await query(topPincodeSql, params);
+    const topPincode = topPincodeResult && topPincodeResult.length > 0 
+      ? topPincodeResult[0].pincode 
+      : 'N/A';
+    const topPincodeDeliveredCount = topPincodeResult && topPincodeResult.length > 0
+      ? (topPincodeResult[0].deliveredCount || 0)
+      : 0;
+    const topPincodeRatio = topPincodeResult && topPincodeResult.length > 0
+      ? parseFloat((topPincodeResult[0].deliveryRatio || 0).toFixed(2))
+      : 0;
 
     res.json({
       success: true,
@@ -62,7 +158,9 @@ router.get('/kpis', async (req, res) => {
         totalOrders,
         totalRevenue: parseFloat(totalRevenue.toFixed(2)),
         averageOrderValue: parseFloat(avgOrderValue.toFixed(2)),
-        totalCOD: parseFloat(totalCOD.toFixed(2)),
+        topPincode,
+        topPincodeRatio,
+        topPincodeDeliveredCount,
         totalRTO,
         totalRTS
       }
@@ -85,11 +183,11 @@ router.get('/order-status', async (req, res) => {
     const params = [];
 
     if (startDate) {
-      whereClause += ' AND order_date >= ?';
+      whereClause += ' AND DATE(order_date) >= DATE(?)';
       params.push(startDate);
     }
     if (endDate) {
-      whereClause += ' AND order_date <= ?';
+      whereClause += ' AND DATE(order_date) <= DATE(?)';
       params.push(endDate);
     }
     if (product) {
@@ -143,11 +241,11 @@ router.get('/payment-methods', async (req, res) => {
     const params = [];
 
     if (startDate) {
-      whereClause += ' AND order_date >= ?';
+      whereClause += ' AND DATE(order_date) >= DATE(?)';
       params.push(startDate);
     }
     if (endDate) {
-      whereClause += ' AND order_date <= ?';
+      whereClause += ' AND DATE(order_date) <= DATE(?)';
       params.push(endDate);
     }
     if (product) {
@@ -200,11 +298,11 @@ router.get('/fulfillment-partners', async (req, res) => {
     const params = [];
 
     if (startDate) {
-      whereClause += ' AND order_date >= ?';
+      whereClause += ' AND DATE(order_date) >= DATE(?)';
       params.push(startDate);
     }
     if (endDate) {
-      whereClause += ' AND order_date <= ?';
+      whereClause += ' AND DATE(order_date) <= DATE(?)';
       params.push(endDate);
     }
     if (product) {
@@ -258,11 +356,11 @@ router.get('/top-products', async (req, res) => {
     const params = [];
 
     if (startDate) {
-      whereClause += ' AND order_date >= ?';
+      whereClause += ' AND DATE(order_date) >= DATE(?)';
       params.push(startDate);
     }
     if (endDate) {
-      whereClause += ' AND order_date <= ?';
+      whereClause += ' AND DATE(order_date) <= DATE(?)';
       params.push(endDate);
     }
     if (pincode) {
@@ -318,11 +416,11 @@ router.get('/top-cities', async (req, res) => {
     const params = [];
 
     if (startDate) {
-      whereClause += ' AND order_date >= ?';
+      whereClause += ' AND DATE(order_date) >= DATE(?)';
       params.push(startDate);
     }
     if (endDate) {
-      whereClause += ' AND order_date <= ?';
+      whereClause += ' AND DATE(order_date) <= DATE(?)';
       params.push(endDate);
     }
 
@@ -374,11 +472,11 @@ router.get('/trends', async (req, res) => {
     const params = [];
 
     if (startDate) {
-      whereClause += ' AND order_date >= ?';
+      whereClause += ' AND DATE(order_date) >= DATE(?)';
       params.push(startDate);
     }
     if (endDate) {
-      whereClause += ' AND order_date <= ?';
+      whereClause += ' AND DATE(order_date) <= DATE(?)';
       params.push(endDate);
     }
     if (product) {
@@ -433,11 +531,11 @@ router.get('/delivery-ratio', async (req, res) => {
     const params = [];
 
     if (startDate) {
-      whereClause += ' AND order_date >= ?';
+      whereClause += ' AND DATE(order_date) >= DATE(?)';
       params.push(startDate);
     }
     if (endDate) {
-      whereClause += ' AND order_date <= ?';
+      whereClause += ' AND DATE(order_date) <= DATE(?)';
       params.push(endDate);
     }
     if (product) {
@@ -449,18 +547,42 @@ router.get('/delivery-ratio', async (req, res) => {
       params.push(pincode);
     }
 
+    // Total orders = RTS + RTO + Dispatched + NDR + RTO-IT + RTO-Dispatched + RTO Pending + Lost + Delivered
+    // Delivery ratio = delivered / total orders
+    // Delivered = orders with status exactly 'delivered' (case-insensitive)
     const sql = `
       SELECT 
         fulfillment_partner as partner,
         COUNT(*) as totalOrders,
-        SUM(CASE WHEN order_status = 'delivered' THEN 1 ELSE 0 END) as deliveredCount
+        SUM(CASE WHEN LOWER(TRIM(order_status)) = 'delivered' THEN 1 ELSE 0 END) as deliveredCount
       FROM orders 
       ${whereClause}
       AND fulfillment_partner IS NOT NULL
+      AND (
+        LOWER(TRIM(order_status)) = 'rts' OR
+        LOWER(TRIM(order_status)) = 'rto' OR
+        LOWER(TRIM(order_status)) = 'delivered' OR
+        LOWER(TRIM(order_status)) = 'lost' OR
+        LOWER(TRIM(order_status)) = 'ndr' OR
+        LOWER(TRIM(order_status)) = 'dispatched' OR
+        LOWER(TRIM(order_status)) LIKE '%rto-it%' OR
+        LOWER(TRIM(order_status)) LIKE '%rto it%' OR
+        (LOWER(TRIM(order_status)) LIKE '%rto-i%' AND LOWER(TRIM(order_status)) NOT LIKE '%rto-it%') OR
+        LOWER(TRIM(order_status)) LIKE '%rto-ii%' OR
+        LOWER(TRIM(order_status)) LIKE '%rto ii%' OR
+        LOWER(TRIM(order_status)) LIKE '%rto-dispatched%' OR
+        LOWER(TRIM(order_status)) LIKE '%rto dispatched%' OR
+        LOWER(TRIM(order_status)) LIKE '%rto pending%' OR
+        LOWER(TRIM(order_status)) LIKE '%rto-pending%'
+      )
       GROUP BY fulfillment_partner
     `;
 
     const results = await query(sql, params);
+    
+    // Debug logging
+    logger.debug(`Delivery ratio query - whereClause: ${whereClause}, params: ${JSON.stringify(params)}`);
+    logger.debug(`Delivery ratio query results: ${results ? results.length : 0} partners found`);
 
     const data = results && Array.isArray(results) ? results.map(item => {
       const totalOrders = item.totalOrders || 0;
@@ -468,6 +590,11 @@ router.get('/delivery-ratio', async (req, res) => {
       const ratio = totalOrders > 0 
         ? parseFloat(((deliveredCount / totalOrders) * 100).toFixed(2))
         : 0;
+      
+      // Debug logging for each partner
+      if (totalOrders > 0) {
+        logger.debug(`Partner: ${item.partner}, Total: ${totalOrders}, Delivered: ${deliveredCount}, Ratio: ${ratio}%`);
+      }
       
       return {
         partner: item.partner || 'Unknown',

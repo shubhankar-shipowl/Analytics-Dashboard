@@ -1,3 +1,12 @@
+/**
+ * Backend Server
+ * 
+ * ARCHITECTURE: Database-Only
+ * - All data is served from MySQL database
+ * - Excel files are ONLY used for importing data INTO the database
+ * - No Excel file reading for data retrieval
+ */
+
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');

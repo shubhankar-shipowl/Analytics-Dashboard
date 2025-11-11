@@ -62,15 +62,18 @@ const FileUpload = ({ onUploadSuccess, onUploadError, backendConnected = false }
       setProgress(100);
 
       if (result.success) {
-        if (onUploadSuccess) {
-          onUploadSuccess(result);
-        }
         let message = `✅ File uploaded successfully!\n\n`;
         if (clearExisting) {
           message += `⚠️ All existing data was deleted before import.\n\n`;
         }
-        message += `Total Rows: ${result.data.totalRows}\nInserted: ${result.data.inserted}\nErrors: ${result.data.errors}`;
+        message += `Total Rows: ${result.data.totalRows}\nInserted: ${result.data.inserted}\nErrors: ${result.data.errors}\n\n`;
+        message += `🔄 Refreshing dashboard...`;
         alert(message);
+        
+        // Call success callback after alert to refresh dashboard
+        if (onUploadSuccess) {
+          await onUploadSuccess(result);
+        }
       } else {
         throw new Error(result.error || 'Upload failed');
       }

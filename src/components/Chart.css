@@ -62,3 +62,45 @@
   .chart-table tr:hover {
     background-color: var(--background-color);
   }
+
+  .chart-view-toggle {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 20px;
+    padding: 8px;
+    background-color: var(--background-color);
+    border-radius: 8px;
+    width: fit-content;
+  }
+
+  .radio-label {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    padding: 8px 16px;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-secondary);
+  }
+
+  .radio-label:hover {
+    background-color: rgba(102, 126, 234, 0.1);
+    color: var(--text-primary);
+  }
+
+  .radio-label.active {
+    background-color: var(--primary-color);
+    color: white;
+  }
+
+  .radio-label input[type="radio"] {
+    margin-right: 8px;
+    cursor: pointer;
+    accent-color: var(--primary-color);
+  }
+
+  .radio-label.active input[type="radio"] {
+    accent-color: white;
+  }

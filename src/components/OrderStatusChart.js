@@ -49,7 +49,7 @@ const OrderStatusChart = ({ data, deliveryRatio, deliveryRatioByPartner }) => {
           )}
           <ResponsiveContainer width="100%" height={400}>
             <BarChart 
-              key={`delivery-ratio-${deliveryRatioByPartner?.length || 0}`}
+              key={`delivery-ratio-${deliveryRatioByPartner?.length || 0}-${deliveryRatioByPartner?.map(p => `${p.partner}-${p.ratio}`).join(',') || ''}`}
               data={deliveryRatioByPartner || []}
               layout="vertical"
               margin={{ top: 5, right: 30, left: 120, bottom: 5 }}
