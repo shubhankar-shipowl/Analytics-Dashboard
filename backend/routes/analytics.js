@@ -11,10 +11,39 @@ const logger = require('../utils/logger');
  * All analytics are calculated from database queries.
  */
 
-// Get KPIs (Key Performance Indicators)
+/**
+ * @swagger
+ * /analytics/kpis:
+ *   get:
+ *     summary: Get Key Performance Indicators (KPIs)
+ *     tags: [Analytics]
+ *     parameters:
+ *       - $ref: '#/components/parameters/startDate'
+ *       - $ref: '#/components/parameters/endDate'
+ *       - $ref: '#/components/parameters/product'
+ *       - $ref: '#/components/parameters/pincode'
+ *     responses:
+ *       200:
+ *         description: KPI data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   $ref: '#/components/schemas/KPIs'
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 router.get('/kpis', async (req, res) => {
   try {
-    const { startDate, endDate, product, pincode } = req.query;
+    const { startDate, endDate, product, products, pincode } = req.query;
 
     let whereClause = 'WHERE 1=1';
     const params = [];
@@ -30,6 +59,15 @@ router.get('/kpis', async (req, res) => {
     if (product) {
       whereClause += ' AND product_name LIKE ?';
       params.push(`%${product}%`);
+    }
+    if (products) {
+      // Handle multiple products (comma-separated)
+      const productList = products.split(',').map(p => p.trim()).filter(p => p);
+      if (productList.length > 0) {
+        const placeholders = productList.map(() => '?').join(',');
+        whereClause += ` AND product_name IN (${placeholders})`;
+        params.push(...productList);
+      }
     }
     if (pincode) {
       whereClause += ' AND pincode = ?';
@@ -61,6 +99,8 @@ router.get('/kpis', async (req, res) => {
     `;
     const totalOrdersResult = await query(totalOrdersSql, params);
     const totalOrders = totalOrdersResult && totalOrdersResult.length > 0 ? totalOrdersResult[0].total : 0;
+    
+    logger.debug(`KPI Calculation - Total Orders: ${totalOrders}, Filters: ${JSON.stringify({ startDate, endDate, product, pincode })}`);
 
     // Total Revenue (only from valid order statuses)
     const revenueSql = `
@@ -88,6 +128,8 @@ router.get('/kpis', async (req, res) => {
     `;
     const revenueResult = await query(revenueSql, params);
     const totalRevenue = revenueResult && revenueResult.length > 0 ? (revenueResult[0].total || 0) : 0;
+    
+    logger.debug(`KPI Calculation - Total Revenue: ${totalRevenue}`);
 
     // Average Order Value
     const avgOrderValue = totalOrders > 0 ? (totalRevenue / totalOrders) : 0;
@@ -97,8 +139,8 @@ router.get('/kpis', async (req, res) => {
     const codResult = await query(codSql, params);
     const totalCOD = codResult && codResult.length > 0 ? (codResult[0].total || 0) : 0;
 
-    // Total RTO
-    const rtoSql = `SELECT COUNT(*) as total FROM orders ${whereClause} AND order_status LIKE '%RTO%'`;
+    // Total RTO - count all orders with RTO in status (case-insensitive)
+    const rtoSql = `SELECT COUNT(*) as total FROM orders ${whereClause} AND (LOWER(TRIM(order_status)) LIKE '%rto%' OR LOWER(TRIM(order_status)) LIKE '%return%')`;
     const rtoResult = await query(rtoSql, params);
     const totalRTO = rtoResult && rtoResult.length > 0 ? rtoResult[0].total : 0;
 
@@ -174,10 +216,45 @@ router.get('/kpis', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /analytics/order-status:
+ *   get:
+ *     summary: Get order status distribution
+ *     tags: [Analytics]
+ *     parameters:
+ *       - $ref: '#/components/parameters/startDate'
+ *       - $ref: '#/components/parameters/endDate'
+ *       - $ref: '#/components/parameters/product'
+ *       - $ref: '#/components/parameters/pincode'
+ *     responses:
+ *       200:
+ *         description: Order status distribution data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       status:
+ *                         type: string
+ *                       count:
+ *                         type: integer
+ *                       percentage:
+ *                         type: number
+ *       500:
+ *         description: Server error
+ */
 // Get order status distribution
 router.get('/order-status', async (req, res) => {
   try {
-    const { startDate, endDate, product, pincode } = req.query;
+    const { startDate, endDate, product, products, pincode } = req.query;
 
     let whereClause = 'WHERE 1=1';
     const params = [];
@@ -193,6 +270,15 @@ router.get('/order-status', async (req, res) => {
     if (product) {
       whereClause += ' AND product_name LIKE ?';
       params.push(`%${product}%`);
+    }
+    if (products) {
+      // Handle multiple products (comma-separated)
+      const productList = products.split(',').map(p => p.trim()).filter(p => p);
+      if (productList.length > 0) {
+        const placeholders = productList.map(() => '?').join(',');
+        whereClause += ` AND product_name IN (${placeholders})`;
+        params.push(...productList);
+      }
     }
     if (pincode) {
       whereClause += ' AND pincode = ?';
@@ -235,7 +321,7 @@ router.get('/order-status', async (req, res) => {
 // Get payment method distribution
 router.get('/payment-methods', async (req, res) => {
   try {
-    const { startDate, endDate, product, pincode } = req.query;
+    const { startDate, endDate, product, products, pincode } = req.query;
 
     let whereClause = 'WHERE 1=1';
     const params = [];
@@ -251,6 +337,14 @@ router.get('/payment-methods', async (req, res) => {
     if (product) {
       whereClause += ' AND product_name LIKE ?';
       params.push(`%${product}%`);
+    }
+    if (products) {
+      const productList = products.split(',').map(p => p.trim()).filter(p => p);
+      if (productList.length > 0) {
+        const placeholders = productList.map(() => '?').join(',');
+        whereClause += ` AND product_name IN (${placeholders})`;
+        params.push(...productList);
+      }
     }
     if (pincode) {
       whereClause += ' AND pincode = ?';
@@ -292,7 +386,7 @@ router.get('/payment-methods', async (req, res) => {
 // Get fulfillment partner analysis
 router.get('/fulfillment-partners', async (req, res) => {
   try {
-    const { startDate, endDate, product, pincode } = req.query;
+    const { startDate, endDate, product, products, pincode } = req.query;
 
     let whereClause = 'WHERE 1=1';
     const params = [];
@@ -308,6 +402,14 @@ router.get('/fulfillment-partners', async (req, res) => {
     if (product) {
       whereClause += ' AND product_name LIKE ?';
       params.push(`%${product}%`);
+    }
+    if (products) {
+      const productList = products.split(',').map(p => p.trim()).filter(p => p);
+      if (productList.length > 0) {
+        const placeholders = productList.map(() => '?').join(',');
+        whereClause += ` AND product_name IN (${placeholders})`;
+        params.push(...productList);
+      }
     }
     if (pincode) {
       whereClause += ' AND pincode = ?';
@@ -410,7 +512,7 @@ router.get('/top-products', async (req, res) => {
 // Get top cities
 router.get('/top-cities', async (req, res) => {
   try {
-    const { startDate, endDate, by = 'orders', limit = 10 } = req.query;
+    const { startDate, endDate, by = 'orders', limit = 10, sort = 'top' } = req.query;
 
     let whereClause = 'WHERE 1=1';
     const params = [];
@@ -424,9 +526,11 @@ router.get('/top-cities', async (req, res) => {
       params.push(endDate);
     }
 
+    // Determine sort direction: 'top' = DESC, 'bottom' = ASC
+    const sortDirection = sort === 'bottom' ? 'ASC' : 'DESC';
     const orderBy = by === 'revenue' 
-      ? 'ORDER BY revenue DESC' 
-      : 'ORDER BY orders DESC';
+      ? `ORDER BY revenue ${sortDirection}` 
+      : `ORDER BY orders ${sortDirection}`;
 
     const sql = `
       SELECT 
@@ -466,7 +570,7 @@ router.get('/top-cities', async (req, res) => {
 // Get daily trends
 router.get('/trends', async (req, res) => {
   try {
-    const { startDate, endDate, product, pincode, view = 'orders' } = req.query;
+    const { startDate, endDate, product, products, pincode, view = 'orders' } = req.query;
 
     let whereClause = 'WHERE 1=1';
     const params = [];
@@ -482,6 +586,14 @@ router.get('/trends', async (req, res) => {
     if (product) {
       whereClause += ' AND product_name LIKE ?';
       params.push(`%${product}%`);
+    }
+    if (products) {
+      const productList = products.split(',').map(p => p.trim()).filter(p => p);
+      if (productList.length > 0) {
+        const placeholders = productList.map(() => '?').join(',');
+        whereClause += ` AND product_name IN (${placeholders})`;
+        params.push(...productList);
+      }
     }
     if (pincode) {
       whereClause += ' AND pincode = ?';
@@ -523,9 +635,46 @@ router.get('/trends', async (req, res) => {
 });
 
 // Get delivery ratio by fulfillment partner
+/**
+ * @swagger
+ * /analytics/delivery-ratio:
+ *   get:
+ *     summary: Get delivery ratio by fulfillment partner
+ *     tags: [Analytics]
+ *     parameters:
+ *       - $ref: '#/components/parameters/startDate'
+ *       - $ref: '#/components/parameters/endDate'
+ *       - $ref: '#/components/parameters/product'
+ *       - $ref: '#/components/parameters/pincode'
+ *     responses:
+ *       200:
+ *         description: Delivery ratio data by partner
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       partner:
+ *                         type: string
+ *                       totalOrders:
+ *                         type: integer
+ *                       deliveredCount:
+ *                         type: integer
+ *                       ratio:
+ *                         type: number
+ *       500:
+ *         description: Server error
+ */
 router.get('/delivery-ratio', async (req, res) => {
   try {
-    const { startDate, endDate, product, pincode } = req.query;
+    const { startDate, endDate, product, products, pincode } = req.query;
 
     let whereClause = 'WHERE 1=1';
     const params = [];
@@ -542,12 +691,20 @@ router.get('/delivery-ratio', async (req, res) => {
       whereClause += ' AND product_name LIKE ?';
       params.push(`%${product}%`);
     }
+    if (products) {
+      const productList = products.split(',').map(p => p.trim()).filter(p => p);
+      if (productList.length > 0) {
+        const placeholders = productList.map(() => '?').join(',');
+        whereClause += ` AND product_name IN (${placeholders})`;
+        params.push(...productList);
+      }
+    }
     if (pincode) {
       whereClause += ' AND pincode = ?';
       params.push(pincode);
     }
 
-    // Total orders = RTS + RTO + Dispatched + NDR + RTO-IT + RTO-Dispatched + RTO Pending + Lost + Delivered
+    // Total orders for delivery ratio = booked + delivered + dispatched + in transit + lost + manifested + ndr + picked + pickup pending + rto + rto-dispatched + rto-it + rto-pending + rts
     // Delivery ratio = delivered / total orders
     // Delivered = orders with status exactly 'delivered' (case-insensitive)
     const sql = `
@@ -559,21 +716,27 @@ router.get('/delivery-ratio', async (req, res) => {
       ${whereClause}
       AND fulfillment_partner IS NOT NULL
       AND (
-        LOWER(TRIM(order_status)) = 'rts' OR
-        LOWER(TRIM(order_status)) = 'rto' OR
+        LOWER(TRIM(order_status)) = 'booked' OR
         LOWER(TRIM(order_status)) = 'delivered' OR
-        LOWER(TRIM(order_status)) = 'lost' OR
-        LOWER(TRIM(order_status)) = 'ndr' OR
         LOWER(TRIM(order_status)) = 'dispatched' OR
-        LOWER(TRIM(order_status)) LIKE '%rto-it%' OR
-        LOWER(TRIM(order_status)) LIKE '%rto it%' OR
-        (LOWER(TRIM(order_status)) LIKE '%rto-i%' AND LOWER(TRIM(order_status)) NOT LIKE '%rto-it%') OR
-        LOWER(TRIM(order_status)) LIKE '%rto-ii%' OR
-        LOWER(TRIM(order_status)) LIKE '%rto ii%' OR
+        LOWER(TRIM(order_status)) LIKE '%in transit%' OR
+        LOWER(TRIM(order_status)) LIKE '%in-transit%' OR
+        LOWER(TRIM(order_status)) = 'intransit' OR
+        LOWER(TRIM(order_status)) = 'lost' OR
+        LOWER(TRIM(order_status)) = 'manifested' OR
+        LOWER(TRIM(order_status)) = 'ndr' OR
+        LOWER(TRIM(order_status)) = 'picked' OR
+        LOWER(TRIM(order_status)) LIKE '%pickup pending%' OR
+        LOWER(TRIM(order_status)) LIKE '%pickup-pending%' OR
+        LOWER(TRIM(order_status)) = 'pickuppending' OR
+        LOWER(TRIM(order_status)) = 'rto' OR
         LOWER(TRIM(order_status)) LIKE '%rto-dispatched%' OR
         LOWER(TRIM(order_status)) LIKE '%rto dispatched%' OR
+        LOWER(TRIM(order_status)) LIKE '%rto-it%' OR
+        LOWER(TRIM(order_status)) LIKE '%rto it%' OR
         LOWER(TRIM(order_status)) LIKE '%rto pending%' OR
-        LOWER(TRIM(order_status)) LIKE '%rto-pending%'
+        LOWER(TRIM(order_status)) LIKE '%rto-pending%' OR
+        LOWER(TRIM(order_status)) = 'rts'
       )
       GROUP BY fulfillment_partner
     `;
@@ -611,6 +774,262 @@ router.get('/delivery-ratio', async (req, res) => {
     });
   } catch (error) {
     logger.error('Error fetching delivery ratio:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error'
+    });
+  }
+});
+
+// Get Good and Bad Pincodes by Product
+// Good Pincode: delivery ratio > 60%
+// Bad Pincode: delivery ratio < 20%
+/**
+ * @swagger
+ * /analytics/good-bad-pincodes:
+ *   get:
+ *     summary: Get good and bad pincodes by product (delivery ratio > 60% = good, < 20% = bad)
+ *     tags: [Analytics]
+ *     parameters:
+ *       - $ref: '#/components/parameters/startDate'
+ *       - $ref: '#/components/parameters/endDate'
+ *       - $ref: '#/components/parameters/product'
+ *     responses:
+ *       200:
+ *         description: Good and bad pincodes data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     good:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           product:
+ *                             type: string
+ *                           pincode:
+ *                             type: string
+ *                           totalOrders:
+ *                             type: integer
+ *                           deliveredCount:
+ *                             type: integer
+ *                           ratio:
+ *                             type: number
+ *                     bad:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           product:
+ *                             type: string
+ *                           pincode:
+ *                             type: string
+ *                           totalOrders:
+ *                             type: integer
+ *                           deliveredCount:
+ *                             type: integer
+ *                           ratio:
+ *                             type: number
+ *       500:
+ *         description: Server error
+ */
+router.get('/good-bad-pincodes', async (req, res) => {
+  try {
+    const { startDate, endDate, product, products } = req.query;
+
+    let whereClause = 'WHERE 1=1';
+    const params = [];
+
+    if (startDate) {
+      whereClause += ' AND DATE(order_date) >= DATE(?)';
+      params.push(startDate);
+    }
+    if (endDate) {
+      whereClause += ' AND DATE(order_date) <= DATE(?)';
+      params.push(endDate);
+    }
+    if (product) {
+      whereClause += ' AND product_name LIKE ?';
+      params.push(`%${product}%`);
+    }
+    if (products) {
+      const productList = products.split(',').map(p => p.trim()).filter(p => p);
+      if (productList.length > 0) {
+        const placeholders = productList.map(() => '?').join(',');
+        whereClause += ` AND product_name IN (${placeholders})`;
+        params.push(...productList);
+      }
+    }
+
+    // Actual orders = booked + delivered + dispatched + in transit + lost + manifested + ndr + picked + pickup pending + rto + rto-dispatched + rto-it + rto-pending + rts
+    // Delivery ratio = delivered / actual orders
+    // Filter: Only include pincodes where actualOrders > (actualOrders + deliveredOrders) / 2
+    // This simplifies to: actualOrders > deliveredOrders
+    const sql = `
+      SELECT 
+        product_name as product,
+        pincode,
+        COUNT(*) as actualOrders,
+        SUM(CASE WHEN LOWER(TRIM(order_status)) = 'delivered' THEN 1 ELSE 0 END) as deliveredCount,
+        CASE 
+          WHEN COUNT(*) > 0 
+          THEN (SUM(CASE WHEN LOWER(TRIM(order_status)) = 'delivered' THEN 1 ELSE 0 END) * 100.0 / COUNT(*))
+          ELSE 0
+        END as ratio
+      FROM orders 
+      ${whereClause}
+      AND pincode IS NOT NULL
+      AND product_name IS NOT NULL
+      AND (
+        LOWER(TRIM(order_status)) = 'booked' OR
+        LOWER(TRIM(order_status)) = 'delivered' OR
+        LOWER(TRIM(order_status)) = 'dispatched' OR
+        LOWER(TRIM(order_status)) LIKE '%in transit%' OR
+        LOWER(TRIM(order_status)) LIKE '%in-transit%' OR
+        LOWER(TRIM(order_status)) = 'intransit' OR
+        LOWER(TRIM(order_status)) = 'lost' OR
+        LOWER(TRIM(order_status)) = 'manifested' OR
+        LOWER(TRIM(order_status)) = 'ndr' OR
+        LOWER(TRIM(order_status)) = 'picked' OR
+        LOWER(TRIM(order_status)) LIKE '%pickup pending%' OR
+        LOWER(TRIM(order_status)) LIKE '%pickup-pending%' OR
+        LOWER(TRIM(order_status)) = 'pickuppending' OR
+        LOWER(TRIM(order_status)) = 'rto' OR
+        LOWER(TRIM(order_status)) LIKE '%rto-dispatched%' OR
+        LOWER(TRIM(order_status)) LIKE '%rto dispatched%' OR
+        LOWER(TRIM(order_status)) LIKE '%rto-it%' OR
+        LOWER(TRIM(order_status)) LIKE '%rto it%' OR
+        LOWER(TRIM(order_status)) LIKE '%rto pending%' OR
+        LOWER(TRIM(order_status)) LIKE '%rto-pending%' OR
+        LOWER(TRIM(order_status)) = 'rts'
+      )
+      GROUP BY product_name, pincode
+      HAVING COUNT(*) > 0
+        AND COUNT(*) > SUM(CASE WHEN LOWER(TRIM(order_status)) = 'delivered' THEN 1 ELSE 0 END)
+    `;
+
+    const results = await query(sql, params);
+
+    const allPincodes = results && Array.isArray(results) ? results.map(item => ({
+      product: item.product || 'Unknown',
+      pincode: item.pincode || 'Unknown',
+      totalOrders: item.actualOrders || 0, // Keep for backward compatibility
+      actualOrders: item.actualOrders || 0,
+      deliveredCount: item.deliveredCount || 0,
+      ratio: parseFloat((item.ratio || 0).toFixed(2))
+    })) : [];
+
+    // Separate into good (> 60%) and bad (< 20%)
+    const good = allPincodes
+      .filter(item => item.ratio > 60)
+      .sort((a, b) => b.ratio - a.ratio);
+
+    const bad = allPincodes
+      .filter(item => item.ratio < 20)
+      .sort((a, b) => a.ratio - b.ratio);
+
+    res.json({
+      success: true,
+      data: { good, bad }
+    });
+  } catch (error) {
+    logger.error('Error fetching good/bad pincodes:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error'
+    });
+  }
+});
+
+// Get Top 10 NDR by Pincode (by absolute NDR count)
+router.get('/top-ndr-cities', async (req, res) => {
+  try {
+    const { startDate, endDate, product, products, limit = 10 } = req.query;
+
+    let whereClause = 'WHERE 1=1';
+    const params = [];
+
+    if (startDate) {
+      whereClause += ' AND DATE(order_date) >= DATE(?)';
+      params.push(startDate);
+    }
+    if (endDate) {
+      whereClause += ' AND DATE(order_date) <= DATE(?)';
+      params.push(endDate);
+    }
+    if (product) {
+      whereClause += ' AND product_name LIKE ?';
+      params.push(`%${product}%`);
+    }
+    if (products) {
+      const productList = products.split(',').map(p => p.trim()).filter(p => p);
+      if (productList.length > 0) {
+        const placeholders = productList.map(() => '?').join(',');
+        whereClause += ` AND product_name IN (${placeholders})`;
+        params.push(...productList);
+      }
+    }
+    // Note: pincode filter is removed as we're grouping by pincode
+
+    // Get Top Pincodes by absolute NDR count
+    const sql = `
+      SELECT 
+        pincode,
+        COUNT(*) as totalOrders,
+        SUM(CASE WHEN LOWER(TRIM(order_status)) = 'cancelled' OR LOWER(TRIM(order_status)) LIKE '%cancel%' THEN 1 ELSE 0 END) as cancelledOrders,
+        SUM(CASE WHEN LOWER(TRIM(order_status)) = 'ndr' THEN 1 ELSE 0 END) as ndrCount,
+        (
+          COUNT(*) - 
+          SUM(CASE WHEN LOWER(TRIM(order_status)) = 'cancelled' OR LOWER(TRIM(order_status)) LIKE '%cancel%' THEN 1 ELSE 0 END)
+        ) as nonCancelledOrders,
+        CASE 
+          WHEN (
+            COUNT(*) - 
+            SUM(CASE WHEN LOWER(TRIM(order_status)) = 'cancelled' OR LOWER(TRIM(order_status)) LIKE '%cancel%' THEN 1 ELSE 0 END)
+          ) > 0 
+          THEN (
+            SUM(CASE WHEN LOWER(TRIM(order_status)) = 'ndr' THEN 1 ELSE 0 END) * 100.0 / 
+            (
+              COUNT(*) - 
+              SUM(CASE WHEN LOWER(TRIM(order_status)) = 'cancelled' OR LOWER(TRIM(order_status)) LIKE '%cancel%' THEN 1 ELSE 0 END)
+            )
+          )
+          ELSE 0
+        END as ndrRatio
+      FROM orders 
+      ${whereClause}
+      AND pincode IS NOT NULL
+      GROUP BY pincode
+      HAVING SUM(CASE WHEN LOWER(TRIM(order_status)) = 'ndr' THEN 1 ELSE 0 END) > 0
+      ORDER BY ndrCount DESC
+      LIMIT ?
+    `;
+
+    params.push(parseInt(limit));
+    const results = await query(sql, params);
+
+    const data = results && Array.isArray(results) ? results.map(item => ({
+      pincode: item.pincode || 'Unknown',
+      totalOrders: item.totalOrders || 0,
+      cancelledOrders: item.cancelledOrders || 0,
+      ndrCount: item.ndrCount || 0,
+      nonCancelledOrders: item.nonCancelledOrders || 0,
+      ndrRatio: parseFloat((item.ndrRatio || 0).toFixed(2))
+    })) : [];
+
+    res.json({
+      success: true,
+      data
+    });
+  } catch (error) {
+    logger.error('Error fetching top NDR pincodes:', error);
     res.status(500).json({
       success: false,
       error: error.message || 'Internal server error'

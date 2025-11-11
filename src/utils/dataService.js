@@ -37,18 +37,47 @@ export const refreshBackendCheck = () => {
 };
 
 // Load data from backend or local file
-export const loadData = async (forceRefresh = false) => {
-  console.log('🔄 Starting data load...');
+// Accepts optional date range filters: { startDate, endDate, product, pincode }
+export const loadData = async (forceRefresh = false, filters = {}) => {
+  console.log('🔄 Starting data load...', filters);
   
   // Always try backend first - database is the primary source
   const isBackendAvailable = await checkBackend(forceRefresh);
   
   if (isBackendAvailable) {
     try {
-      console.log('📡 Fetching data from MySQL database...');
-      // Load from backend API - use a large limit to get all data
-      // For very large datasets, consider implementing pagination
-      const response = await ordersAPI.getAll({ limit: 1000000 });
+      console.log('📡 Fetching data from MySQL database with filters:', filters);
+      // Build query parameters for date filtering
+      const queryParams = { limit: 1000000 };
+      
+      // Add date filters if provided (only if not empty)
+      if (filters.startDate && filters.startDate.trim() !== '') {
+        queryParams.startDate = filters.startDate;
+        console.log('  ✓ startDate filter:', filters.startDate);
+      }
+      if (filters.endDate && filters.endDate.trim() !== '') {
+        queryParams.endDate = filters.endDate;
+        console.log('  ✓ endDate filter:', filters.endDate);
+      }
+      if (filters.product && filters.product.trim() !== '') {
+        queryParams.product = filters.product;
+        console.log('  ✓ product filter:', filters.product);
+      }
+      if (filters.products && filters.products.trim() !== '') {
+        queryParams.products = filters.products;
+        console.log('  ✓ products filter (multiple):', filters.products);
+      }
+      if (filters.pincode && filters.pincode.trim() !== '') {
+        queryParams.pincode = filters.pincode;
+        console.log('  ✓ pincode filter:', filters.pincode);
+      }
+      
+      if (Object.keys(queryParams).length === 1) {
+        console.log('  ℹ️  No filters applied - fetching all data (Lifetime)');
+      }
+      
+      // Load from backend API with date range filters
+      const response = await ordersAPI.getAll(queryParams);
       
       if (response && response.success && response.data) {
         if (Array.isArray(response.data) && response.data.length > 0) {
@@ -132,8 +161,10 @@ export const getKPIs = async (filters = {}) => {
   
   if (isBackendAvailable) {
     try {
+      console.log('📡 Fetching KPIs from backend with filters:', filters);
       const response = await analyticsAPI.getKPIs(filters);
-      if (response.success && response.data) {
+      if (response && response.success && response.data) {
+        console.log('✅ KPIs received from backend:', response.data);
         return {
           totalOrders: response.data.totalOrders || 0,
           totalRevenue: response.data.totalRevenue || 0,
@@ -144,9 +175,13 @@ export const getKPIs = async (filters = {}) => {
           totalRTO: response.data.totalRTO || 0,
           totalRTS: response.data.totalRTS || 0
         };
+      } else {
+        console.warn('⚠️ Backend returned unsuccessful response:', response);
       }
     } catch (error) {
-      console.error('Error fetching KPIs from backend:', error);
+      console.error('❌ Error fetching KPIs from backend:', error);
+      // Don't return null immediately - throw to let caller handle
+      throw error;
     }
   }
   
@@ -273,6 +308,42 @@ export const getDeliveryRatio = async (filters = {}) => {
       }
     } catch (error) {
       console.error('Error fetching delivery ratio from backend:', error);
+    }
+  }
+  
+  return null; // Will be calculated locally
+};
+
+// Get good and bad pincodes by product from backend or calculate locally
+export const getGoodBadPincodes = async (filters = {}) => {
+  const isBackendAvailable = await checkBackend();
+  
+  if (isBackendAvailable) {
+    try {
+      const response = await analyticsAPI.getGoodBadPincodes(filters);
+      if (response && response.success && response.data) {
+        return response.data;
+      }
+    } catch (error) {
+      console.error('Error fetching good/bad pincodes from backend:', error);
+    }
+  }
+  
+  return null; // Will be calculated locally
+};
+
+// Get top NDR cities from backend or calculate locally
+export const getTopNDRCities = async (filters = {}) => {
+  const isBackendAvailable = await checkBackend();
+  
+  if (isBackendAvailable) {
+    try {
+      const response = await analyticsAPI.getTopNDRCities(filters);
+      if (response.success && response.data) {
+        return response.data;
+      }
+    } catch (error) {
+      console.error('Error fetching top NDR cities from backend:', error);
     }
   }
   

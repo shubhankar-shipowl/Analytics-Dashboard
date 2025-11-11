@@ -1,9 +1,9 @@
 :root {
     /* Theme Colors */
-    --primary-color: #667eea;
-    --secondary-color: #764ba2;
+    --primary-color: #ff8b42;
+    --secondary-color: #ff8b42;
     --accent-color: #ffd7a8;
-    --background-color: #f7fafc;
+    --background-color: #fffdfc;
     --text-primary: #2d3748;
     --text-secondary: #4a5568;
     --text-muted: #718096;
@@ -125,7 +125,7 @@
     height: 18px;
     accent-color: var(--primary-color);
   }
-
+  
   @media (max-width: 768px) {
     .app-container {
       flex-direction: column;

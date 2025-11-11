@@ -162,6 +162,30 @@ export const analyticsAPI = {
     });
     const queryString = params.toString();
     return apiCall(`/analytics/delivery-ratio${queryString ? '?' + queryString : ''}`);
+  },
+
+  // Get top NDR cities
+  getTopNDRCities: (filters = {}) => {
+    const params = new URLSearchParams();
+    Object.keys(filters).forEach(key => {
+      if (filters[key] !== null && filters[key] !== undefined && filters[key] !== '') {
+        params.append(key, filters[key]);
+      }
+    });
+    const queryString = params.toString();
+    return apiCall(`/analytics/top-ndr-cities${queryString ? '?' + queryString : ''}`);
+  },
+
+  // Get good and bad pincodes by product
+  getGoodBadPincodes: (filters = {}) => {
+    const params = new URLSearchParams();
+    Object.keys(filters).forEach(key => {
+      if (filters[key] !== null && filters[key] !== undefined && filters[key] !== '') {
+        params.append(key, filters[key]);
+      }
+    });
+    const queryString = params.toString();
+    return apiCall(`/analytics/good-bad-pincodes${queryString ? '?' + queryString : ''}`);
   }
 };
 

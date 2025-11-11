@@ -2,13 +2,17 @@ import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import './Chart.css';
 
-const TopCitiesChart = ({ data, by = 'orders' }) => {
+const TopCitiesChart = ({ data, by = 'orders', sortDirection = 'top' }) => {
   // Limit to exactly 10 cities
   const formattedData = (data || []).slice(0, 10);
+  
+  const chartTitle = sortDirection === 'bottom' 
+    ? `Bottom 10 Cities ${by === 'orders' ? 'by Orders' : 'by Revenue'}`
+    : `Top 10 Cities ${by === 'orders' ? 'by Orders' : 'by Revenue'}`;
 
   return (
     <div className="chart-container">
-      <h3 className="chart-title">Top 10 Cities {by === 'orders' ? 'by Orders' : 'by Revenue'}</h3>
+      <h3 className="chart-title">{chartTitle}</h3>
       <ResponsiveContainer width="100%" height={450}>
         <BarChart 
           data={formattedData} 
@@ -44,7 +48,7 @@ const TopCitiesChart = ({ data, by = 'orders' }) => {
           />
           <Bar 
             dataKey={by === 'orders' ? 'orders' : 'revenue'} 
-            fill="#00C49F"
+            fill="var(--primary-color)"
             radius={[0, 4, 4, 0]}
           />
         </BarChart>

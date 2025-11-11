@@ -13,7 +13,7 @@ const PriceRangeChart = ({ data }) => {
           <YAxis />
           <Tooltip />
           <Legend />
-          <Bar dataKey="count" fill="#FF8042" />
+          <Bar dataKey="count" fill="var(--primary-color)" />
         </BarChart>
       </ResponsiveContainer>
     </div>

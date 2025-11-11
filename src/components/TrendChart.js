@@ -18,7 +18,7 @@ const TrendChart = ({ data, viewType }) => {
           <Line 
             type="monotone" 
             dataKey={viewType === 'revenue' ? 'revenue' : 'orders'} 
-            stroke="#667eea" 
+            stroke="var(--primary-color)" 
             strokeWidth={2}
             name={viewType === 'revenue' ? 'Revenue' : 'Orders'}
           />

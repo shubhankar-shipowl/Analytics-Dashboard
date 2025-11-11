@@ -121,18 +121,29 @@ class Order {
       const params = [];
 
       if (filters.startDate) {
-        sql += ' AND order_date >= ?';
+        // Use DATE() function to compare Order Date column with today's date
+        sql += ' AND DATE(order_date) >= DATE(?)';
         params.push(filters.startDate);
       }
 
       if (filters.endDate) {
-        sql += ' AND order_date <= ?';
+        // Use DATE() function to compare Order Date column with today's date
+        sql += ' AND DATE(order_date) <= DATE(?)';
         params.push(filters.endDate);
       }
 
       if (filters.product) {
         sql += ' AND product_name LIKE ?';
         params.push(`%${filters.product}%`);
+      }
+      if (filters.products) {
+        // Handle multiple products (comma-separated)
+        const productList = filters.products.split(',').map(p => p.trim()).filter(p => p);
+        if (productList.length > 0) {
+          const placeholders = productList.map(() => '?').join(',');
+          sql += ` AND product_name IN (${placeholders})`;
+          params.push(...productList);
+        }
       }
 
       if (filters.pincode) {
@@ -178,18 +189,29 @@ class Order {
       const params = [];
 
       if (filters.startDate) {
-        sql += ' AND order_date >= ?';
+        // Use DATE() function to compare Order Date column with today's date
+        sql += ' AND DATE(order_date) >= DATE(?)';
         params.push(filters.startDate);
       }
 
       if (filters.endDate) {
-        sql += ' AND order_date <= ?';
+        // Use DATE() function to compare Order Date column with today's date
+        sql += ' AND DATE(order_date) <= DATE(?)';
         params.push(filters.endDate);
       }
 
       if (filters.product) {
         sql += ' AND product_name LIKE ?';
         params.push(`%${filters.product}%`);
+      }
+      if (filters.products) {
+        // Handle multiple products (comma-separated)
+        const productList = filters.products.split(',').map(p => p.trim()).filter(p => p);
+        if (productList.length > 0) {
+          const placeholders = productList.map(() => '?').join(',');
+          sql += ` AND product_name IN (${placeholders})`;
+          params.push(...productList);
+        }
       }
 
       if (filters.pincode) {

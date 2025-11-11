@@ -11,13 +11,70 @@ const logger = require('../utils/logger');
  * Excel files are only used for importing data INTO the database.
  */
 
-// Get all orders with optional filters
+/**
+ * @swagger
+ * /orders:
+ *   get:
+ *     summary: Get all orders with optional filters
+ *     tags: [Orders]
+ *     parameters:
+ *       - $ref: '#/components/parameters/startDate'
+ *       - $ref: '#/components/parameters/endDate'
+ *       - $ref: '#/components/parameters/product'
+ *       - $ref: '#/components/parameters/pincode'
+ *       - name: status
+ *         in: query
+ *         description: Filter by order status
+ *         required: false
+ *         schema:
+ *           type: string
+ *       - name: order_id
+ *         in: query
+ *         description: Filter by order ID
+ *         required: false
+ *         schema:
+ *           type: string
+ *       - $ref: '#/components/parameters/limit'
+ *       - $ref: '#/components/parameters/offset'
+ *     responses:
+ *       200:
+ *         description: List of orders
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Order'
+ *                 pagination:
+ *                   type: object
+ *                   properties:
+ *                     total:
+ *                       type: integer
+ *                     limit:
+ *                       type: integer
+ *                     offset:
+ *                       type: integer
+ *                     hasMore:
+ *                       type: boolean
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 router.get('/', async (req, res) => {
   try {
     const { 
       startDate, 
       endDate, 
       product, 
+      products, // Support multiple products
       pincode, 
       status,
       order_id,
@@ -29,6 +86,7 @@ router.get('/', async (req, res) => {
     if (startDate) filters.startDate = startDate;
     if (endDate) filters.endDate = endDate;
     if (product) filters.product = product;
+    if (products) filters.products = products; // Multiple products (comma-separated)
     if (pincode) filters.pincode = pincode;
     if (status) filters.status = status;
     if (order_id) filters.order_id = order_id;
@@ -55,7 +113,44 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Get single order by ID
+/**
+ * @swagger
+ * /orders/{id}:
+ *   get:
+ *     summary: Get a single order by ID
+ *     tags: [Orders]
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         description: Order ID
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Order details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   $ref: '#/components/schemas/Order'
+ *       404:
+ *         description: Order not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -81,7 +176,51 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// Create new order
+/**
+ * @swagger
+ * /orders:
+ *   post:
+ *     summary: Create a new order
+ *     tags: [Orders]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/Order'
+ *           example:
+ *             order_id: "ORD-12345"
+ *             order_date: "2024-01-15"
+ *             order_status: "delivered"
+ *             product_name: "Sample Product"
+ *             sku: "SKU-001"
+ *             pincode: "110001"
+ *             city: "New Delhi"
+ *             order_value: 999.99
+ *             payment_method: "COD"
+ *             fulfillment_partner: "Ekart"
+ *             quantity: 1
+ *     responses:
+ *       201:
+ *         description: Order created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   $ref: '#/components/schemas/Order'
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 router.post('/', async (req, res) => {
   try {
     const order = await Order.create(req.body);
@@ -100,7 +239,39 @@ router.post('/', async (req, res) => {
   }
 });
 
-// Update order
+/**
+ * @swagger
+ * /orders/{id}:
+ *   put:
+ *     summary: Update an existing order
+ *     tags: [Orders]
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         description: Order ID
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/Order'
+ *     responses:
+ *       200:
+ *         description: Order updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Success'
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -119,7 +290,33 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// Delete order
+/**
+ * @swagger
+ * /orders/{id}:
+ *   delete:
+ *     summary: Delete an order
+ *     tags: [Orders]
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         description: Order ID
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Order deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Success'
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;

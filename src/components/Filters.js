@@ -88,12 +88,54 @@ const Filters = ({
       )}
 
       <div className="filter-group">
-        <label>Search by Product</label>
+        <label>Search by Product (Multi-select)</label>
         <div className="searchable-select">
+          <div style={{ 
+            display: 'flex', 
+            flexWrap: 'wrap', 
+            gap: '6px', 
+            marginBottom: '8px',
+            minHeight: '32px',
+            padding: '4px',
+            border: '1px solid #e2e8f0',
+            borderRadius: '6px',
+            background: 'white'
+          }}>
+            {productFilter && productFilter.length > 0 ? (
+              productFilter.map(product => (
+                <span
+                  key={product}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '4px 8px',
+                    background: 'var(--primary-color)',
+                    color: 'white',
+                    borderRadius: '4px',
+                    fontSize: '0.85rem',
+                    cursor: 'pointer'
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const newFilter = productFilter.filter(p => p !== product);
+                    onProductFilterChange(newFilter);
+                  }}
+                >
+                  {product}
+                  <span style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>×</span>
+                </span>
+              ))
+            ) : (
+              <span style={{ color: '#999', fontSize: '0.9rem', padding: '4px' }}>
+                No products selected
+              </span>
+            )}
+          </div>
           <input
             type="text"
             placeholder="Type to search products..."
-            value={productFilter !== 'All' ? productFilter : productSearch}
+            value={productSearch}
             onChange={(e) => {
               setProductSearch(e.target.value);
               setShowProductDropdown(true);
@@ -102,36 +144,75 @@ const Filters = ({
             onBlur={() => setTimeout(() => setShowProductDropdown(false), 200)}
           />
           {showProductDropdown && (
-            <div className="dropdown-list">
+            <div className="dropdown-list" style={{ maxHeight: '300px', overflowY: 'auto' }}>
               <div 
                 className="dropdown-item"
                 onClick={() => {
-                  onProductFilterChange('All');
+                  onProductFilterChange([]);
                   setProductSearch('');
                   setShowProductDropdown(false);
                 }}
+                style={{ 
+                  fontWeight: 'bold',
+                  borderBottom: '1px solid #e2e8f0',
+                  paddingBottom: '8px',
+                  marginBottom: '4px'
+                }}
               >
-                All Products
+                Clear All
               </div>
-              {filteredProducts.slice(0, 50).map(product => (
-                <div 
-                  key={product} 
-                  className="dropdown-item"
-                  onClick={() => {
-                    onProductFilterChange(product);
-                    setProductSearch('');
-                    setShowProductDropdown(false);
-                  }}
-                >
-                  {product}
-                </div>
-              ))}
+              {filteredProducts.slice(0, 100).map(product => {
+                const isSelected = productFilter && productFilter.includes(product);
+                return (
+                  <div 
+                    key={product} 
+                    className="dropdown-item"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const newFilter = isSelected
+                        ? productFilter.filter(p => p !== product)
+                        : [...(productFilter || []), product];
+                      onProductFilterChange(newFilter);
+                      setProductSearch('');
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      cursor: 'pointer',
+                      background: isSelected ? '#f0f9ff' : 'white'
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => {}} // Handled by parent onClick
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ cursor: 'pointer' }}
+                    />
+                    <span style={{ flex: 1 }}>{product}</span>
+                    {isSelected && (
+                      <span style={{ color: 'var(--primary-color)', fontSize: '0.9rem' }}>✓</span>
+                    )}
+                  </div>
+                );
+              })}
               {filteredProducts.length === 0 && (
                 <div className="dropdown-item">No products found</div>
               )}
             </div>
           )}
         </div>
+        {productFilter && productFilter.length > 0 && (
+          <div style={{ 
+            marginTop: '6px', 
+            fontSize: '0.85rem', 
+            color: 'var(--text-secondary)',
+            fontStyle: 'italic'
+          }}>
+            {productFilter.length} product{productFilter.length !== 1 ? 's' : ''} selected
+          </div>
+        )}
       </div>
 
       <div className="filter-group">

@@ -14,7 +14,9 @@ import {
     getTopProducts,
     getTopCities,
     getTopProductsByPincode,
-    getTopPincodeByDelivery
+    getTopPincodeByDelivery,
+    getTopNDRCities,
+    getGoodBadPincodesByProduct
   } from './utils/dataProcessor';
 import { 
   loadData, 
@@ -27,7 +29,9 @@ import {
   getTopProducts as fetchTopProducts,
   getTopCities as fetchTopCities,
   getTrends as fetchTrends,
-  getDeliveryRatio as fetchDeliveryRatio
+  getDeliveryRatio as fetchDeliveryRatio,
+  getTopNDRCities as fetchTopNDRCities,
+  getGoodBadPincodes as fetchGoodBadPincodes
 } from './utils/dataService';
 import KPISection from './components/KPISection';
 import Filters from './components/Filters';
@@ -39,6 +43,8 @@ import PriceRangeChart from './components/PriceRangeChart';
 import TrendChart from './components/TrendChart';
 import TopProductsChart from './components/TopProductsChart';
 import TopCitiesChart from './components/TopCitiesChart';
+import TopNDRCitiesChart from './components/TopNDRCitiesChart';
+import GoodBadPincodesChart from './components/GoodBadPincodesChart';
 
 function App() {
   const [data, setData] = useState([]);
@@ -50,11 +56,12 @@ function App() {
   const [dateFilter, setDateFilter] = useState('Lifetime');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
-  const [productFilter, setProductFilter] = useState('All');
+  const [productFilter, setProductFilter] = useState([]); // Changed to array for multi-select
   const [pincodeFilter, setPincodeFilter] = useState('All');
   const [trendViewType, setTrendViewType] = useState('orders');
   const [productViewType, setProductViewType] = useState('orders');
   const [cityViewType, setCityViewType] = useState('orders');
+  const [citySortDirection, setCitySortDirection] = useState('top'); // 'top' or 'bottom'
   
   // KPIs and Charts Data
   const [kpis, setKpis] = useState({
@@ -79,24 +86,99 @@ function App() {
   const [topProductsData, setTopProductsData] = useState([]);
   const [topCitiesData, setTopCitiesData] = useState([]);
   const [topProductsByPincodeData, setTopProductsByPincodeData] = useState([]);
+  const [topNDRCitiesData, setTopNDRCitiesData] = useState([]);
+  const [goodBadPincodesData, setGoodBadPincodesData] = useState({ good: [], bad: [] });
+
+  // Build date filters for data loading - memoized to prevent unnecessary recalculations
+  const getDateFilters = React.useCallback(() => {
+    const filters = {};
+    
+    if (dateFilter !== 'Lifetime') {
+      if (dateFilter === 'Custom' && customStartDate && customEndDate) {
+        filters.startDate = customStartDate;
+        filters.endDate = customEndDate;
+      } else {
+        // Calculate date range for other filters
+        const today = new Date();
+        let startDate = new Date();
+        
+        switch (dateFilter) {
+          case 'Today':
+            startDate.setHours(0, 0, 0, 0);
+            filters.startDate = startDate.toISOString().split('T')[0];
+            filters.endDate = today.toISOString().split('T')[0];
+            break;
+          case 'Last 7 Days':
+            startDate.setDate(today.getDate() - 6);
+            startDate.setHours(0, 0, 0, 0);
+            filters.startDate = startDate.toISOString().split('T')[0];
+            filters.endDate = today.toISOString().split('T')[0];
+            break;
+          case 'Last 30 Days':
+            startDate.setDate(today.getDate() - 29);
+            startDate.setHours(0, 0, 0, 0);
+            filters.startDate = startDate.toISOString().split('T')[0];
+            filters.endDate = today.toISOString().split('T')[0];
+            break;
+          case 'Last 90 Days':
+            startDate.setDate(today.getDate() - 89);
+            startDate.setHours(0, 0, 0, 0);
+            filters.startDate = startDate.toISOString().split('T')[0];
+            filters.endDate = today.toISOString().split('T')[0];
+            break;
+          case 'This Month':
+            startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+            filters.startDate = startDate.toISOString().split('T')[0];
+            filters.endDate = today.toISOString().split('T')[0];
+            break;
+          case 'Last Month':
+            startDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+            const endDate = new Date(today.getFullYear(), today.getMonth(), 0);
+            filters.startDate = startDate.toISOString().split('T')[0];
+            filters.endDate = endDate.toISOString().split('T')[0];
+            break;
+          case 'This Year':
+            startDate = new Date(today.getFullYear(), 0, 1);
+            filters.startDate = startDate.toISOString().split('T')[0];
+            filters.endDate = today.toISOString().split('T')[0];
+            break;
+          case 'Yearly':
+            startDate.setFullYear(today.getFullYear() - 1);
+            startDate.setHours(0, 0, 0, 0);
+            filters.startDate = startDate.toISOString().split('T')[0];
+            filters.endDate = today.toISOString().split('T')[0];
+            break;
+          default:
+            break;
+        }
+      }
+    }
+    
+    console.log('📅 Date filters calculated:', { dateFilter, filters });
+    return filters;
+  }, [dateFilter, customStartDate, customEndDate]);
 
   useEffect(() => {
-    // Load data from backend API or local Excel file
+    // Load data from backend API or local Excel file with date filters
     const fetchData = async () => {
       try {
         setLoading(true);
-        const loadedData = await loadData();
+        setError(null); // Clear any previous errors
+        const dateFilters = getDateFilters();
+        console.log('📅 Loading data with date filters:', { dateFilter, dateFilters });
+        const loadedData = await loadData(false, dateFilters);
+        console.log(`✅ Loaded ${loadedData.length} records with date filter: ${dateFilter}`);
         setData(loadedData);
         setLoading(false);
       } catch (err) {
         setError(err.message);
         setLoading(false);
-        console.error('Error loading data:', err);
+        console.error('❌ Error loading data:', err);
       }
     };
     
     fetchData();
-  }, []);
+  }, [dateFilter, customStartDate, customEndDate, getDateFilters]);
 
   // Handle file upload success
   const handleUploadSuccess = async (result) => {
@@ -110,7 +192,9 @@ function App() {
       await new Promise(resolve => setTimeout(resolve, 1500));
       
       refreshBackendCheck();
-      const loadedData = await loadData(true);
+      // Reload with current date filters
+      const dateFilters = getDateFilters();
+      const loadedData = await loadData(true, dateFilters);
       
       if (loadedData && loadedData.length > 0) {
         setData(loadedData);
@@ -139,24 +223,22 @@ function App() {
       return;
     }
 
+    // Data is already filtered by date range from backend API
+    // Only apply product and pincode filters locally
     let filtered = [...data];
 
-    // Apply date filter first (if not Lifetime)
-    if (dateFilter !== 'Lifetime') {
-      filtered = filterByDateRange(filtered, dateFilter, customStartDate, customEndDate);
-    }
-
-    // Apply product filter (works on date-filtered data)
-    if (productFilter !== 'All' && productFilter !== '') {
+    // Apply product filter (supports multiple products)
+    if (productFilter && productFilter.length > 0) {
       filtered = filtered.filter(row => {
         const rowProduct = row.product || row['Product Name'] || '';
         const productStr = String(rowProduct).trim();
-        const filterStr = String(productFilter).trim();
-        return productStr === filterStr;
+        return productFilter.some(filterProduct => 
+          String(filterProduct).trim() === productStr
+        );
       });
     }
 
-    // Apply pincode filter (works on date and product filtered data)
+    // Apply pincode filter
     if (pincodeFilter !== 'All' && pincodeFilter !== '') {
       filtered = filtered.filter(row => {
         const rowPincode = row.pincode || row['Pincode'] || '';
@@ -164,8 +246,20 @@ function App() {
       });
     }
 
+    console.log(`📊 Filtered data: ${filtered.length} rows (from ${data.length} total after date filter)`);
+    
+    // Debug: Check status distribution
+    const statusCounts = {};
+    filtered.forEach(row => {
+      const status = row.status || row.order_status || row.Status || row.orderStatus || '';
+      if (status) {
+        statusCounts[status] = (statusCounts[status] || 0) + 1;
+      }
+    });
+    console.log('📊 Status distribution in filtered data:', statusCounts);
+
     setFilteredData(filtered);
-  }, [data, dateFilter, customStartDate, customEndDate, productFilter, pincodeFilter]);
+  }, [data, productFilter, pincodeFilter]);
 
   // Helper function to build filter object for API calls
   const buildFilters = () => {
@@ -188,17 +282,23 @@ function App() {
             filters.endDate = today.toISOString().split('T')[0];
             break;
           case 'Last 7 Days':
-            startDate.setDate(today.getDate() - 7);
+            // Last 7 Days: 7 days back from today (inclusive of today)
+            startDate.setDate(today.getDate() - 6); // -6 to get 7 days including today
+            startDate.setHours(0, 0, 0, 0);
             filters.startDate = startDate.toISOString().split('T')[0];
             filters.endDate = today.toISOString().split('T')[0];
             break;
           case 'Last 30 Days':
-            startDate.setDate(today.getDate() - 30);
+            // Last 30 Days: 30 days back from today (inclusive of today)
+            startDate.setDate(today.getDate() - 29); // -29 to get 30 days including today
+            startDate.setHours(0, 0, 0, 0);
             filters.startDate = startDate.toISOString().split('T')[0];
             filters.endDate = today.toISOString().split('T')[0];
             break;
           case 'Last 90 Days':
-            startDate.setDate(today.getDate() - 90);
+            // Last 90 Days: 90 days back from today (inclusive of today)
+            startDate.setDate(today.getDate() - 89); // -89 to get 90 days including today
+            startDate.setHours(0, 0, 0, 0);
             filters.startDate = startDate.toISOString().split('T')[0];
             filters.endDate = today.toISOString().split('T')[0];
             break;
@@ -218,15 +318,22 @@ function App() {
             filters.startDate = startDate.toISOString().split('T')[0];
             filters.endDate = today.toISOString().split('T')[0];
             break;
+          case 'Yearly':
+            // Yearly means last 12 months
+            startDate.setFullYear(today.getFullYear() - 1);
+            filters.startDate = startDate.toISOString().split('T')[0];
+            filters.endDate = today.toISOString().split('T')[0];
+            break;
           default:
             break;
         }
       }
     }
     
-    // Product filter
-    if (productFilter !== 'All' && productFilter !== '') {
-      filters.product = productFilter;
+    // Product filter (supports multiple products)
+    if (productFilter && productFilter.length > 0) {
+      // Send as comma-separated string for backend, or handle as array
+      filters.products = productFilter.join(','); // Use 'products' for multiple
     }
     
     // Pincode filter
@@ -242,9 +349,9 @@ function App() {
     const fetchAnalytics = async () => {
       if (!isUsingBackend()) {
         // Fallback to local calculations
-        if (filteredData.length === 0) return;
-        
-        const calculatedKPIs = calculateKPIs(filteredData);
+    if (filteredData.length === 0) return;
+
+    const calculatedKPIs = calculateKPIs(filteredData);
         // Ensure all KPIs including topPincodeDeliveredCount are set
         setKpis({
           totalOrders: calculatedKPIs.totalOrders,
@@ -264,31 +371,56 @@ function App() {
         setPriceRangeData(getPriceRangeDistribution(filteredData));
         setTrendData(getDailyTrend(filteredData, trendViewType));
         setTopProductsData(getTopProducts(filteredData, productViewType));
-        setTopCitiesData(getTopCities(filteredData, cityViewType));
+        setTopCitiesData(getTopCities(filteredData, cityViewType, 10, citySortDirection));
         setTopProductsByPincodeData(pincodeFilter !== 'All' ? getTopProductsByPincode(filteredData, pincodeFilter) : []);
+        setTopNDRCitiesData(getTopNDRCities(filteredData, 10));
+        setGoodBadPincodesData(getGoodBadPincodesByProduct(filteredData, productFilter && productFilter.length > 0 ? productFilter[0] : null));
         return;
       }
 
       // Fetch from backend APIs
       try {
         const filters = buildFilters();
+        console.log('📊 Fetching analytics with filters:', filters);
         
         // Fetch KPIs
-        const kpisData = await fetchKPIs(filters);
-        if (kpisData) {
-          setKpis(kpisData);
-        } else if (filteredData.length > 0) {
-          const calculatedKPIs = calculateKPIs(filteredData);
-          setKpis({
-            totalOrders: calculatedKPIs.totalOrders,
-            totalRevenue: calculatedKPIs.totalRevenue,
-            avgOrderValue: calculatedKPIs.avgOrderValue,
-            topPincode: calculatedKPIs.topPincode,
-            topPincodeRatio: calculatedKPIs.topPincodeRatio,
-            topPincodeDeliveredCount: calculatedKPIs.topPincodeDeliveredCount || 0,
-            totalRTO: calculatedKPIs.totalRTO,
-            totalRTS: calculatedKPIs.totalRTS,
-          });
+        try {
+          const kpisData = await fetchKPIs(filters);
+          if (kpisData) {
+            console.log('✅ Using KPIs from backend:', kpisData);
+            setKpis(kpisData);
+          } else {
+            console.warn('⚠️ Backend returned null, falling back to local calculation');
+            if (filteredData.length > 0) {
+              const calculatedKPIs = calculateKPIs(filteredData);
+              console.log('📊 Using locally calculated KPIs:', calculatedKPIs);
+              setKpis({
+                totalOrders: calculatedKPIs.totalOrders,
+                totalRevenue: calculatedKPIs.totalRevenue,
+                avgOrderValue: calculatedKPIs.avgOrderValue,
+                topPincode: calculatedKPIs.topPincode,
+                topPincodeRatio: calculatedKPIs.topPincodeRatio,
+                topPincodeDeliveredCount: calculatedKPIs.topPincodeDeliveredCount || 0,
+                totalRTO: calculatedKPIs.totalRTO,
+                totalRTS: calculatedKPIs.totalRTS,
+              });
+            }
+          }
+        } catch (error) {
+          console.error('❌ Error fetching KPIs, using local calculation:', error);
+          if (filteredData.length > 0) {
+            const calculatedKPIs = calculateKPIs(filteredData);
+            setKpis({
+              totalOrders: calculatedKPIs.totalOrders,
+              totalRevenue: calculatedKPIs.totalRevenue,
+              avgOrderValue: calculatedKPIs.avgOrderValue,
+              topPincode: calculatedKPIs.topPincode,
+              topPincodeRatio: calculatedKPIs.topPincodeRatio,
+              topPincodeDeliveredCount: calculatedKPIs.topPincodeDeliveredCount || 0,
+              totalRTO: calculatedKPIs.totalRTO,
+              totalRTS: calculatedKPIs.totalRTS,
+            });
+          }
         }
 
         // Fetch order status
@@ -359,11 +491,30 @@ function App() {
         }
 
         // Fetch top cities
-        const topCities = await fetchTopCities({ ...filters, by: cityViewType, limit: 10 });
+        const topCities = await fetchTopCities({ ...filters, by: cityViewType, limit: 10, sort: citySortDirection });
         if (topCities) {
           setTopCitiesData(topCities);
         } else if (filteredData.length > 0) {
-          setTopCitiesData(getTopCities(filteredData, cityViewType));
+          setTopCitiesData(getTopCities(filteredData, cityViewType, 10, citySortDirection));
+        }
+
+        // Fetch top NDR cities
+        const topNDRCities = await fetchTopNDRCities({ ...filters, limit: 10 });
+        if (topNDRCities) {
+          setTopNDRCitiesData(topNDRCities);
+        } else if (filteredData.length > 0) {
+          setTopNDRCitiesData(getTopNDRCities(filteredData, 10));
+        }
+
+        // Fetch good/bad pincodes by product
+        const goodBadPincodes = await fetchGoodBadPincodes(filters);
+        if (goodBadPincodes) {
+          setGoodBadPincodesData(goodBadPincodes);
+        } else if (filteredData.length > 0) {
+          const localGoodBad = getGoodBadPincodesByProduct(filteredData, productFilter && productFilter.length > 0 ? productFilter[0] : null);
+          setGoodBadPincodesData(localGoodBad);
+        } else {
+          setGoodBadPincodesData({ good: [], bad: [] });
         }
 
         // Fetch top products by pincode
@@ -405,50 +556,42 @@ function App() {
           setPriceRangeData(getPriceRangeDistribution(filteredData));
           setTrendData(getDailyTrend(filteredData, trendViewType));
           setTopProductsData(getTopProducts(filteredData, productViewType));
-          setTopCitiesData(getTopCities(filteredData, cityViewType));
+          setTopCitiesData(getTopCities(filteredData, cityViewType, 10, citySortDirection));
           setTopProductsByPincodeData(pincodeFilter !== 'All' ? getTopProductsByPincode(filteredData, pincodeFilter) : []);
+          setTopNDRCitiesData(getTopNDRCities(filteredData, 10));
         }
       }
     };
 
     fetchAnalytics();
-  }, [filteredData, dateFilter, customStartDate, customEndDate, productFilter, pincodeFilter, trendViewType, productViewType, cityViewType]);
+  }, [filteredData, dateFilter, customStartDate, customEndDate, productFilter, pincodeFilter, trendViewType, productViewType, cityViewType, citySortDirection]);
 
-  // Get filtered data for extracting unique values (based on date and product filters)
+  // Get filtered data for extracting unique values (data is already date-filtered from backend)
   const dataForFilterOptions = React.useMemo(() => {
     if (!data || data.length === 0) return [];
     
     let filtered = [...data];
     
-    // Apply date filter (if not Lifetime)
-    if (dateFilter !== 'Lifetime') {
-      filtered = filterByDateRange(filtered, dateFilter, customStartDate, customEndDate);
-    }
-    
-    // Apply product filter (if selected)
-    if (productFilter !== 'All' && productFilter !== '') {
+    // Apply product filter (if selected) - date filter already applied by backend
+    if (productFilter && productFilter.length > 0) {
       filtered = filtered.filter(row => {
         const rowProduct = row.product || row['Product Name'] || '';
         const productStr = String(rowProduct).trim();
-        const filterStr = String(productFilter).trim();
-        return productStr === filterStr;
+        return productFilter.some(filterProduct => 
+          String(filterProduct).trim() === productStr
+        );
       });
     }
     
     return filtered;
-  }, [data, dateFilter, customStartDate, customEndDate, productFilter]);
+  }, [data, productFilter]);
 
-  // Get unique products for filter dropdown (filtered by date only, not by product)
+  // Get unique products for filter dropdown (data is already date-filtered from backend)
   const uniqueProducts = React.useMemo(() => {
     const products = new Set();
-    let dataForProducts = [...data];
     
-    // Apply date filter only (not product filter, since we want all products for the selected period)
-    if (dateFilter !== 'Lifetime') {
-      dataForProducts = filterByDateRange(dataForProducts, dateFilter, customStartDate, customEndDate);
-    }
-    
-    dataForProducts.forEach(row => {
+    // Data is already filtered by date from backend, no need to filter again
+    data.forEach(row => {
       // Extract product from multiple possible field names
       const product = row.product || row['Product Name'] || '';
       if (product && String(product).trim()) {
@@ -456,7 +599,7 @@ function App() {
       }
     });
     return Array.from(products).sort();
-  }, [data, dateFilter, customStartDate, customEndDate]);
+  }, [data]);
 
   // Get unique pincodes for filter dropdown (filtered by date AND product)
   const uniquePincodes = React.useMemo(() => {
@@ -639,6 +782,7 @@ function App() {
             data={orderStatusData} 
             deliveryRatio={deliveryRatioData}
             deliveryRatioByPartner={deliveryRatioByPartnerData}
+            filteredData={filteredData}
           />
 
           <PaymentMethodChart data={paymentMethodData} />
@@ -716,8 +860,32 @@ function App() {
                 By Revenue
               </label>
             </div>
-            <TopCitiesChart data={topCitiesData} by={cityViewType} />
+            <div className="chart-view-toggle" style={{ marginTop: '10px' }}>
+              <label className={`radio-label ${citySortDirection === 'top' ? 'active' : ''}`}>
+                <input 
+                  type="radio" 
+                  value="top" 
+                  checked={citySortDirection === 'top'} 
+                  onChange={() => setCitySortDirection('top')} 
+                />
+                Top 10
+              </label>
+              <label className={`radio-label ${citySortDirection === 'bottom' ? 'active' : ''}`}>
+                <input 
+                  type="radio" 
+                  value="bottom" 
+                  checked={citySortDirection === 'bottom'} 
+                  onChange={() => setCitySortDirection('bottom')} 
+                />
+                Bottom 10
+              </label>
+            </div>
+            <TopCitiesChart data={topCitiesData} by={cityViewType} sortDirection={citySortDirection} />
           </div>
+
+          <TopNDRCitiesChart data={topNDRCitiesData} />
+
+          <GoodBadPincodesChart data={goodBadPincodesData} filteredData={filteredData} />
 
           {pincodeFilter !== 'All' && (
             <div className="chart-container">

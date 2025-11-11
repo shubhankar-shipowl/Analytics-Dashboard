@@ -38,7 +38,63 @@ const upload = multer({
   }
 });
 
-// Import Excel file endpoint
+/**
+ * @swagger
+ * /import/excel:
+ *   post:
+ *     summary: Import orders from Excel file
+ *     tags: [Import]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - file
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: Excel file (.xlsx, .xls, .csv)
+ *               clearExisting:
+ *                 type: string
+ *                 description: Clear existing data before import (true/false)
+ *                 example: "false"
+ *     responses:
+ *       200:
+ *         description: Import completed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     inserted:
+ *                       type: integer
+ *                     errors:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *       400:
+ *         description: Bad request (no file or invalid file)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 router.post('/excel', upload.single('file'), async (req, res) => {
   const startTime = Date.now();
   let importLogId = null;

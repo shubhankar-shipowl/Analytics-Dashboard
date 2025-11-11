@@ -47,11 +47,11 @@ const TopProductsChart = ({ data, by }) => {
           <Legend 
             formatter={(value) => by === 'revenue' ? 'Revenue' : 'Orders'}
           />
-          <Bar 
-            dataKey={by === 'orders' ? 'orders' : 'revenue'} 
-            fill="#667eea"
-            radius={[0, 4, 4, 0]}
-          />
+                <Bar 
+                  dataKey={by === 'orders' ? 'orders' : 'revenue'} 
+                  fill="var(--primary-color)"
+                  radius={[0, 4, 4, 0]}
+                />
         </BarChart>
       </ResponsiveContainer>
     </div>

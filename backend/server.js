@@ -10,11 +10,13 @@
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
+const swaggerUi = require('swagger-ui-express');
 require('dotenv').config();
 
 const { testConnection, getPoolStats } = require('./config/database');
 const logger = require('./utils/logger');
 const { ensureTablesExist } = require('./utils/dbHelper');
+const swaggerSpec = require('./config/swagger');
 const ordersRoutes = require('./routes/orders');
 const analyticsRoutes = require('./routes/analytics');
 const importRoutes = require('./routes/import');
@@ -76,7 +78,48 @@ app.use(cors({
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
 
-// Health check endpoint
+// Swagger UI
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: 'Dashboard API Documentation'
+}));
+
+// Swagger JSON endpoint
+app.get('/api-docs.json', (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.send(swaggerSpec);
+});
+
+/**
+ * @swagger
+ * /health:
+ *   get:
+ *     summary: Health check endpoint
+ *     tags: [Health]
+ *     responses:
+ *       200:
+ *         description: Server status
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: OK
+ *                 message:
+ *                   type: string
+ *                 timestamp:
+ *                   type: string
+ *                   format: date-time
+ *                 database:
+ *                   type: object
+ *                   properties:
+ *                     connected:
+ *                       type: boolean
+ *                     poolStats:
+ *                       type: object
+ */
 app.get('/api/health', (req, res) => {
   const poolStats = getPoolStats();
   res.json({ 
@@ -166,6 +209,7 @@ const startServer = async () => {
       logger.info(`🚀 Server running on port ${PORT}`);
       logger.info(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
       logger.info(`🔗 API URL: http://localhost:${PORT}/api`);
+      logger.info(`📚 Swagger UI: http://localhost:${PORT}/api-docs`);
       logger.info(`📝 Logs directory: ${require('path').join(__dirname, 'logs')}`);
     });
   } catch (error) {

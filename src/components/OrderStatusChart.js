@@ -1,14 +1,98 @@
 import React, { useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import * as XLSX from 'xlsx';
 import './Chart.css';
 
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffd7a8'];
+const COLORS = ['#ff8b42', '#ffd7a8', '#FFBB28', '#FF8042', '#ff8b42', '#ffd7a8', '#fffdfc'];
 
-const OrderStatusChart = ({ data, deliveryRatio, deliveryRatioByPartner }) => {
+const OrderStatusChart = ({ data, deliveryRatio, deliveryRatioByPartner, filteredData = [] }) => {
+  // Helper function to get status from row (handles multiple field name variations)
+  const getStatus = (row) => {
+    return row.status || 
+           row.order_status || 
+           row.Status || 
+           row['Status'] || 
+           row['Order Status'] || 
+           row['order status'] ||
+           row.orderStatus ||
+           '';
+  };
+
+  // Function to export data to Excel
+  const exportToExcel = (status) => {
+    // Filter data by status
+    const statusData = filteredData.filter(row => {
+      const rowStatus = String(getStatus(row)).trim();
+      const filterStatus = String(status).trim();
+      return rowStatus.toLowerCase() === filterStatus.toLowerCase();
+    });
+
+    if (statusData.length === 0) {
+      alert(`No data found for status: ${status}`);
+      return;
+    }
+
+    // Get all unique keys from all rows to include all columns
+    const allKeys = new Set();
+    statusData.forEach(row => {
+      Object.keys(row).forEach(key => allKeys.add(key));
+    });
+
+    // Convert Set to Array and sort for consistent column order
+    const sortedKeys = Array.from(allKeys).sort();
+
+    // Prepare data for Excel export - include ALL columns
+    const excelData = statusData.map(row => {
+      const excelRow = {};
+      sortedKeys.forEach(key => {
+        let value = row[key];
+        
+        // Handle Date objects
+        if (value instanceof Date) {
+          value = value.toLocaleDateString();
+        }
+        // Handle null/undefined
+        else if (value === null || value === undefined) {
+          value = '';
+        }
+        // Keep other values as-is
+        excelRow[key] = value;
+      });
+      return excelRow;
+    });
+
+    // Create workbook and worksheet
+    const ws = XLSX.utils.json_to_sheet(excelData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Orders');
+
+    // Set column widths dynamically based on column names and content
+    const colWidths = sortedKeys.map(key => {
+      // Calculate max width based on header and content
+      const headerWidth = key.length;
+      const contentWidths = excelData.slice(0, 100).map(row => {
+        const cellValue = String(row[key] || '');
+        return cellValue.length;
+      });
+      const maxContentWidth = contentWidths.length > 0 ? Math.max(...contentWidths) : 0;
+      // Set width with some padding, max 50 characters, min 10
+      return { wch: Math.min(Math.max(headerWidth, maxContentWidth, 10) + 2, 50) };
+    });
+    ws['!cols'] = colWidths;
+
+    // Generate filename with status and current date
+    const dateStr = new Date().toISOString().split('T')[0];
+    const filename = `Orders_${status.replace(/[^a-zA-Z0-9]/g, '_')}_${dateStr}.xlsx`;
+
+    // Save file
+    XLSX.writeFile(wb, filename);
+  };
+
   // Force re-render when data changes
   useEffect(() => {
     // This ensures the component re-renders when props change
   }, [data, deliveryRatio, deliveryRatioByPartner]);
+  
   return (
     <div className="chart-container">
       <h3 className="chart-title">Order Status Distribution</h3>
@@ -19,14 +103,15 @@ const OrderStatusChart = ({ data, deliveryRatio, deliveryRatioByPartner }) => {
             <div style={{ 
               marginBottom: '20px',
               padding: '15px',
-              background: '#f7fafc',
+              background: 'var(--background-color)',
               borderRadius: '8px',
-              textAlign: 'center'
+              textAlign: 'center',
+              width: '100%'
             }}>
               <div style={{ 
                 fontSize: '1.2rem', 
                 fontWeight: '600', 
-                color: '#4a5568',
+                color: 'var(--text-secondary)',
                 marginBottom: '5px'
               }}>
                 Overall Delivery Ratio
@@ -34,20 +119,21 @@ const OrderStatusChart = ({ data, deliveryRatio, deliveryRatioByPartner }) => {
               <div style={{ 
                 fontSize: '2rem', 
                 fontWeight: 'bold', 
-                color: '#667eea',
+                color: 'var(--primary-color)',
                 marginBottom: '5px'
               }}>
                 {deliveryRatio.ratio}%
               </div>
               <div style={{ 
-                color: '#718096',
+                color: 'var(--text-muted)',
                 fontSize: '0.85rem'
               }}>
                 {deliveryRatio.deliveredCount.toLocaleString()} out of {deliveryRatio.totalOrders.toLocaleString()} orders
               </div>
             </div>
           )}
-          <ResponsiveContainer width="100%" height={400}>
+          <div style={{ width: '100%' }}>
+            <ResponsiveContainer width="100%" height={400}>
             <BarChart 
               key={`delivery-ratio-${deliveryRatioByPartner?.length || 0}-${deliveryRatioByPartner?.map(p => `${p.partner}-${p.ratio}`).join(',') || ''}`}
               data={deliveryRatioByPartner || []}
@@ -89,54 +175,37 @@ const OrderStatusChart = ({ data, deliveryRatio, deliveryRatioByPartner }) => {
               <Legend />
               <Bar 
                 dataKey="ratioValue" 
-                fill="#667eea"
+                fill="var(--primary-color)"
                 name="Delivery Ratio (%)"
               />
             </BarChart>
           </ResponsiveContainer>
+          </div>
         </div>
         <div className="chart-item">
           <h4>By Percentage</h4>
-          <ResponsiveContainer width="100%" height={300}>
-            <PieChart>
+          <div style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
               <Pie
                 data={data}
                 cx="50%"
                 cy="50%"
-                labelLine={false}
-                label={({ status, percentage }) => `${status}: ${percentage}%`}
-                outerRadius={80}
+                labelLine={true}
+                label={({ status, percentage }) => percentage > 2 ? `${status}: ${percentage}%` : ''}
+                outerRadius={100}
                 fill="#8884d8"
                 dataKey="count"
               >
-                {data.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                ))}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
+                  {data.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
         </div>
-      </div>
-      <div className="chart-table">
-        <table>
-          <thead>
-            <tr>
-              <th>Status</th>
-              <th>Count</th>
-              <th>Percentage</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.map((item, index) => (
-              <tr key={index}>
-                <td>{item.status}</td>
-                <td>{item.count.toLocaleString()}</td>
-                <td>{item.percentage}%</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
       </div>
     </div>
   );
