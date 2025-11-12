@@ -2,14 +2,30 @@ import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import './Chart.css';
 
-const TopProductsChart = ({ data, by }) => {
+const TopProductsChart = ({ data, by = 'orders' }) => {
   // Limit to exactly 10 products and format product names
-  const formattedData = (data || []).slice(0, 10).map(item => ({
-    ...item,
-    product: item.product && item.product.length > 30 
-      ? item.product.substring(0, 30) + '...' 
-      : item.product
-  }));
+  const formattedData = (data && Array.isArray(data) ? data : [])
+    .filter(item => item && item.product)
+    .slice(0, 10)
+    .map(item => ({
+      ...item,
+      product: item.product && item.product.length > 30 
+        ? item.product.substring(0, 30) + '...' 
+        : item.product,
+      orders: item.orders || 0,
+      revenue: parseFloat(item.revenue || 0)
+    }));
+
+  if (!formattedData || formattedData.length === 0) {
+    return (
+      <div className="chart-container">
+        <h3 className="chart-title">Top 10 Products {by === 'orders' ? 'by Orders' : 'by Revenue'}</h3>
+        <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
+          No product data available
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="chart-container">
@@ -32,26 +48,42 @@ const TopProductsChart = ({ data, by }) => {
           <Tooltip 
             formatter={(value, name) => {
               if (by === 'revenue') {
-                return [`₹${value.toLocaleString('en-IN')}`, 'Revenue'];
+                return [`₹${parseFloat(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 'Revenue'];
               }
-              return [value, 'Orders'];
+              return [parseInt(value || 0).toLocaleString('en-IN'), 'Orders'];
             }}
             labelFormatter={(label) => `Product: ${label}`}
-            contentStyle={{ 
-              backgroundColor: 'rgba(255, 255, 255, 0.95)',
-              border: '1px solid #ccc',
-              borderRadius: '4px',
-              padding: '8px'
+            content={({ active, payload }) => {
+              if (active && payload && payload.length) {
+                const data = payload[0].payload;
+                return (
+                  <div style={{
+                    background: 'white',
+                    padding: '10px',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '6px',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                  }}>
+                    <p style={{ fontWeight: 'bold', marginBottom: '5px' }}>{data.product}</p>
+                    {by === 'revenue' ? (
+                      <p>Revenue: <strong>₹{parseFloat(data.revenue || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
+                    ) : (
+                      <p>Orders: <strong>{parseInt(data.orders || 0).toLocaleString('en-IN')}</strong></p>
+                    )}
+                  </div>
+                );
+              }
+              return null;
             }}
           />
           <Legend 
             formatter={(value) => by === 'revenue' ? 'Revenue' : 'Orders'}
           />
-                <Bar 
-                  dataKey={by === 'orders' ? 'orders' : 'revenue'} 
-                  fill="var(--primary-color)"
-                  radius={[0, 4, 4, 0]}
-                />
+          <Bar 
+            dataKey={by === 'orders' ? 'orders' : 'revenue'} 
+            fill="var(--primary-color)"
+            radius={[0, 4, 4, 0]}
+          />
         </BarChart>
       </ResponsiveContainer>
     </div>

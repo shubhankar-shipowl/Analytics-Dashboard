@@ -4,8 +4,19 @@ import * as XLSX from 'xlsx';
 import './Chart.css';
 
 const GoodBadPincodesChart = ({ data, filteredData = [] }) => {
-  const good = data?.good || [];
-  const bad = data?.bad || [];
+  // Debug logging
+  React.useEffect(() => {
+    console.log('📊 GoodBadPincodesChart received data:', {
+      hasData: !!data,
+      goodCount: data?.good?.length || 0,
+      badCount: data?.bad?.length || 0,
+      good: data?.good?.slice(0, 3) || [],
+      bad: data?.bad?.slice(0, 3) || []
+    });
+  }, [data]);
+
+  const good = (data && Array.isArray(data.good)) ? data.good : [];
+  const bad = (data && Array.isArray(data.bad)) ? data.bad : [];
 
   // Helper function to get status from row
   const getStatus = (row) => {

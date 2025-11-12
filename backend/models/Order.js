@@ -49,52 +49,68 @@ class Order {
     }
   }
 
-  // Bulk insert orders
-  static async bulkCreate(ordersData) {
+  // Bulk insert orders (optimized)
+  static async bulkCreate(ordersData, providedConnection = null) {
     try {
       if (!ordersData || ordersData.length === 0) {
         return { inserted: 0, errors: [] };
       }
 
+      // Optimize: Use INSERT IGNORE or ON DUPLICATE KEY UPDATE for better performance
+      // For now, use standard INSERT with optimized batch size
       const sql = `INSERT INTO orders (
         order_id, order_date, order_status, product_name, sku, 
         pincode, city, order_value, payment_method, fulfillment_partner, quantity
       ) VALUES ?`;
 
+      // Pre-process all orders at once for better performance
       const values = ordersData.map(order => {
         const o = new Order(order);
         return [
-          o.order_id,
-          o.order_date,
-          o.order_status,
-          o.product_name,
-          o.sku,
-          o.pincode,
-          o.city,
-          o.order_value,
-          o.payment_method,
-          o.fulfillment_partner,
-          o.quantity
+          o.order_id || null,
+          o.order_date || null,
+          o.order_status || null,
+          o.product_name || null,
+          o.sku || null,
+          o.pincode || null,
+          o.city || null,
+          o.order_value || null,
+          o.payment_method || null,
+          o.fulfillment_partner || null,
+          o.quantity || 1
         ];
       });
 
-      // Use connection pool for bulk insert
+      // Use provided connection or get new one
       const { pool } = require('../config/database');
-      const connection = await pool.getConnection();
+      const connection = providedConnection || await pool.getConnection();
+      const shouldRelease = !providedConnection;
       
       try {
-        await connection.query('START TRANSACTION');
+        // Only start transaction if we're managing the connection
+        if (shouldRelease) {
+          await connection.query('START TRANSACTION');
+        }
+        
+        // Use query() for bulk inserts with VALUES ? syntax (execute() doesn't work with VALUES ?)
+        // For bulk inserts, query() is more appropriate than execute()
         const [result] = await connection.query(sql, [values]);
-        await connection.query('COMMIT');
+        
+        if (shouldRelease) {
+          await connection.query('COMMIT');
+        }
         
         const affectedRows = result && result.affectedRows ? result.affectedRows : 0;
-        logger.info(`Bulk inserted ${affectedRows} orders`);
         return { inserted: affectedRows, errors: [] };
       } catch (error) {
-        await connection.query('ROLLBACK');
+        if (shouldRelease) {
+          await connection.query('ROLLBACK');
+        }
         throw error;
       } finally {
-        connection.release();
+        if (shouldRelease) {
+          connection.release();
+        }
       }
     } catch (error) {
       logger.error('Error in bulk create:', error);
@@ -121,15 +137,21 @@ class Order {
       const params = [];
 
       if (filters.startDate) {
-        // Use DATE() function to compare Order Date column with today's date
-        sql += ' AND DATE(order_date) >= DATE(?)';
+        // Optimize: Avoid DATE() function on column - use range comparison instead
+        // DATE(order_date) prevents index usage, so use direct comparison
+        sql += ' AND order_date >= ?';
         params.push(filters.startDate);
+        logger.info(`Applying startDate filter: ${filters.startDate}`);
       }
 
       if (filters.endDate) {
-        // Use DATE() function to compare Order Date column with today's date
-        sql += ' AND DATE(order_date) <= DATE(?)';
-        params.push(filters.endDate);
+        // Optimize: Use < next day instead of DATE() function for better index usage
+        // This allows MySQL to use the index on order_date
+        const nextDay = new Date(filters.endDate);
+        nextDay.setDate(nextDay.getDate() + 1);
+        sql += ' AND order_date < ?';
+        params.push(nextDay.toISOString().split('T')[0]);
+        logger.info(`Applying endDate filter: ${filters.endDate} (optimized to < ${nextDay.toISOString().split('T')[0]})`);
       }
 
       if (filters.product) {
@@ -173,8 +195,17 @@ class Order {
         params.push(parseInt(pagination.offset));
       }
 
+      logger.info(`🔍 Executing SQL query: ${sql}`);
+      logger.info(`🔍 SQL parameters: ${JSON.stringify(params)}`);
       const orders = await query(sql, params);
-      logger.info(`Found ${orders.length} orders with filters`);
+      logger.info(`✅ Found ${orders.length} orders with filters`);
+      if (filters.startDate || filters.endDate) {
+        logger.info(`📅 Date filter applied - startDate: ${filters.startDate || 'none'}, endDate: ${filters.endDate || 'none'}`);
+        if (orders.length > 0) {
+          const sampleDates = orders.slice(0, 5).map(o => o.order_date);
+          logger.info(`📅 Sample order dates from results: ${JSON.stringify(sampleDates)}`);
+        }
+      }
       return orders;
     } catch (error) {
       logger.error('Error finding orders:', error);
@@ -189,15 +220,17 @@ class Order {
       const params = [];
 
       if (filters.startDate) {
-        // Use DATE() function to compare Order Date column with today's date
-        sql += ' AND DATE(order_date) >= DATE(?)';
+        // Optimize: Avoid DATE() function on column for better index usage
+        sql += ' AND order_date >= ?';
         params.push(filters.startDate);
       }
 
       if (filters.endDate) {
-        // Use DATE() function to compare Order Date column with today's date
-        sql += ' AND DATE(order_date) <= DATE(?)';
-        params.push(filters.endDate);
+        // Optimize: Use < next day for better index usage
+        const nextDay = new Date(filters.endDate);
+        nextDay.setDate(nextDay.getDate() + 1);
+        sql += ' AND order_date < ?';
+        params.push(nextDay.toISOString().split('T')[0]);
       }
 
       if (filters.product) {
@@ -280,24 +313,50 @@ class Order {
     }
   }
 
-  // Clear all orders (use with caution)
+  // Clear all orders (optimized - use TRUNCATE for better performance)
   static async clearAll() {
+    const { pool } = require('../config/database');
+    const connection = await pool.getConnection();
+    
     try {
-      // First get count for logging
-      const countResult = await query('SELECT COUNT(*) as count FROM orders');
+      // Get count for logging before deletion
+      const [countResult] = await connection.execute('SELECT COUNT(*) as count FROM orders');
       const count = countResult && countResult.length > 0 ? countResult[0].count : 0;
       
-      // Use DELETE instead of TRUNCATE to avoid foreign key issues
-      // TRUNCATE resets AUTO_INCREMENT, DELETE doesn't
-      const sql = 'DELETE FROM orders';
-      const result = await query(sql);
+      if (count === 0) {
+        logger.info('No orders to delete');
+        return { deleted: 0 };
+      }
       
-      const deletedRows = result && result.affectedRows ? result.affectedRows : 0;
-      logger.warn(`All orders cleared from database. Deleted ${deletedRows} rows (count was ${count})`);
-      return { deleted: deletedRows };
+      // Optimize: Use TRUNCATE for faster deletion (much faster than DELETE)
+      // TRUNCATE is faster because it drops and recreates the table
+      // However, it resets AUTO_INCREMENT, so we'll handle that
+      await connection.query('SET FOREIGN_KEY_CHECKS = 0'); // Disable FK checks temporarily
+      await connection.query('TRUNCATE TABLE orders');
+      await connection.query('SET FOREIGN_KEY_CHECKS = 1'); // Re-enable FK checks
+      
+      logger.warn(`All orders cleared from database using TRUNCATE. Deleted ${count} rows`);
+      return { deleted: count };
     } catch (error) {
+      // If TRUNCATE fails (e.g., foreign key constraints), fall back to DELETE
+      if (error.code === 'ER_ROW_IS_REFERENCED_2' || error.message.includes('foreign key')) {
+        logger.warn('TRUNCATE failed due to foreign key constraints, using DELETE instead...');
+        try {
+          await connection.query('SET FOREIGN_KEY_CHECKS = 0');
+          const [result] = await connection.execute('DELETE FROM orders');
+          await connection.query('SET FOREIGN_KEY_CHECKS = 1');
+          const deletedRows = result && result.affectedRows ? result.affectedRows : 0;
+          logger.warn(`All orders cleared using DELETE. Deleted ${deletedRows} rows`);
+          return { deleted: deletedRows };
+        } catch (deleteError) {
+          await connection.query('SET FOREIGN_KEY_CHECKS = 1');
+          throw deleteError;
+        }
+      }
       logger.error('Error clearing orders:', error);
       throw error;
+    } finally {
+      connection.release();
     }
   }
 }

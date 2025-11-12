@@ -9,40 +9,54 @@ const normalizeColumnName = (colName) => {
   if (!colName) return colName;
   const lower = colName.toLowerCase().trim();
   
-  // Order ID variations
+  // Order ID variations - prioritize exact matches
+  if (lower === 'orderid' || lower === 'order id') return 'order_id';
   if ((lower.includes('order') && lower.includes('id')) || 
       lower.includes('orderid') || 
       lower.includes('order number') ||
-      lower.includes('ordernumber')) return 'order_id';
+      lower.includes('ordernumber') ||
+      lower.includes('client order id')) return 'order_id';
   
-  // Date variations
-  if (lower.includes('date') || lower.includes('order date') || lower.includes('orderdate')) return 'order_date';
+  // Date variations - prioritize "Order Date"
+  if (lower === 'order date' || lower === 'orderdate') return 'order_date';
+  if (lower.includes('date') && !lower.includes('delivered') && !lower.includes('rts') && !lower.includes('added')) {
+    return 'order_date';
+  }
   
-  // Amount/Revenue variations
-  if (lower.includes('amount') || lower.includes('price') || 
-      lower.includes('revenue') || lower.includes('value') || 
-      lower.includes('total') || lower.includes('order value') ||
-      lower.includes('order_value')) return 'order_value';
+  // Amount/Revenue variations - prioritize "Order Amount" and "Total Amount"
+  if (lower === 'order amount' || lower === 'total amount') return 'order_value';
+  if (lower.includes('amount') && !lower.includes('cod') && !lower.includes('extra')) {
+    return 'order_value';
+  }
+  if (lower.includes('price') || lower.includes('revenue') || 
+      lower.includes('value') || lower.includes('total') || 
+      lower.includes('order value') || lower.includes('order_value')) {
+    return 'order_value';
+  }
   
-  // Status variations
+  // Status variations - exact match for "Status"
+  if (lower === 'status') return 'order_status';
   if (lower.includes('status') || lower.includes('state') || 
       lower.includes('order status') || lower.includes('orderstatus')) return 'order_status';
   
-  // Payment method variations
+  // Payment method variations - "Mode" column contains COD/PPD
+  if (lower === 'mode') return 'payment_method';
   if (lower.includes('payment') || lower.includes('cod') || 
       lower.includes('ppd') || lower.includes('payment method') ||
       lower.includes('paymentmethod') || lower.includes('payment type')) return 'payment_method';
   
   // City variations
+  if (lower === 'city') return 'city';
   if (lower.includes('city') || lower.includes('ship city') || 
       lower.includes('delivery city')) return 'city';
   
   // Pincode variations
+  if (lower === 'pincode' || lower === 'pin code') return 'pincode';
   if (lower.includes('pin') || lower.includes('zip') || 
       lower.includes('pincode') || lower.includes('pin code') ||
       lower.includes('postal')) return 'pincode';
   
-  // Product variations - ONLY match "Product Name" column exactly
+  // Product variations - exact match for "Product Name"
   if (lower === 'product name' || lower.trim() === 'product name') {
     return 'product_name';
   }
@@ -55,19 +69,21 @@ const normalizeColumnName = (colName) => {
       return 'product_name';
     }
   }
-  // SKU should be separate
-  if (lower.includes('sku') || lower === 'sku') {
-    return 'sku';
-  }
   
-  // Quantity variations
+  // SKU - exact match
+  if (lower === 'sku') return 'sku';
+  if (lower.includes('sku')) return 'sku';
+  
+  // Quantity variations - prioritize "Product Qty"
+  if (lower === 'product qty' || lower === 'product quantity') return 'quantity';
   if (lower.includes('quantity') || lower.includes('qty') || 
       lower.includes('qty.') || lower.includes('qty ')) {
     return 'quantity';
   }
   
-  // Fulfillment partner variations - prioritize "fulfilled by"
-  if (lower.includes('fulfilled by') || lower === 'fulfilled by' || lower.includes('fulfilledby')) {
+  // Fulfillment partner variations - exact match for "Fulfilled By"
+  if (lower === 'fulfilled by' || lower === 'fulfilledby') return 'fulfillment_partner';
+  if (lower.includes('fulfilled by') || lower.includes('fulfilledby')) {
     return 'fulfillment_partner';
   }
   if (lower.includes('fulfillment') || lower.includes('partner') || 
@@ -140,7 +156,7 @@ const parseNumber = (value) => {
 
 // Import Excel file
 const importExcelFile = async (filePath, options = {}) => {
-  const { clearExisting = false, batchSize = 1000 } = options;
+  const { clearExisting = false, batchSize = 5000 } = options; // Increased from 1000 to 5000 for better performance
   
   try {
     logger.info(`Starting Excel import from: ${filePath}`);
@@ -216,31 +232,61 @@ const importExcelFile = async (filePath, options = {}) => {
       logger.info(`✅ Cleared ${clearResult.deleted || 0} existing orders from database`);
     }
     
-    // Insert data in batches
-    logger.info(`Inserting ${normalizedData.length} orders in batches of ${batchSize}...`);
-    let totalInserted = 0;
-    let totalErrors = 0;
+    // Optimize: Disable indexes temporarily for faster bulk insert (if large dataset)
+    const isLargeDataset = normalizedData.length > 10000;
+    const { pool } = require('../config/database');
+    const connection = await pool.getConnection();
     
-    for (let i = 0; i < normalizedData.length; i += batchSize) {
-      const batch = normalizedData.slice(i, i + batchSize);
-      try {
-        const result = await Order.bulkCreate(batch);
-        totalInserted += result.inserted;
-        logger.info(`Batch ${Math.floor(i / batchSize) + 1}: Inserted ${result.inserted} orders`);
-      } catch (error) {
-        logger.error(`Error inserting batch ${Math.floor(i / batchSize) + 1}:`, error.message);
-        totalErrors += batch.length;
+    try {
+      if (isLargeDataset) {
+        logger.info('📊 Large dataset detected - temporarily disabling indexes for faster import...');
+        await connection.query('ALTER TABLE orders DISABLE KEYS');
       }
+      
+      // Insert data in batches with optimized batch size
+      logger.info(`Inserting ${normalizedData.length} orders in batches of ${batchSize}...`);
+      let totalInserted = 0;
+      let totalErrors = 0;
+      const totalBatches = Math.ceil(normalizedData.length / batchSize);
+      
+      for (let i = 0; i < normalizedData.length; i += batchSize) {
+        const batch = normalizedData.slice(i, i + batchSize);
+        const batchNumber = Math.floor(i / batchSize) + 1;
+        
+        try {
+          // Use connection for batch insert to maintain transaction
+          const result = await Order.bulkCreate(batch, connection);
+          totalInserted += result.inserted;
+          
+          // Log progress every 10 batches or on last batch
+          if (batchNumber % 10 === 0 || batchNumber === totalBatches) {
+            const progress = ((batchNumber / totalBatches) * 100).toFixed(1);
+            logger.info(`Batch ${batchNumber}/${totalBatches} (${progress}%): Inserted ${result.inserted} orders | Total: ${totalInserted}`);
+          }
+        } catch (error) {
+          logger.error(`Error inserting batch ${batchNumber}:`, error.message);
+          totalErrors += batch.length;
+          // Continue with next batch instead of failing completely
+        }
+      }
+      
+      // Re-enable indexes and rebuild them
+      if (isLargeDataset) {
+        logger.info('🔧 Re-enabling and rebuilding indexes...');
+        await connection.query('ALTER TABLE orders ENABLE KEYS');
+      }
+      
+      logger.info(`Import completed: ${totalInserted} orders inserted, ${totalErrors} errors`);
+      
+      return {
+        success: true,
+        totalRows: jsonData.length,
+        inserted: totalInserted,
+        errors: totalErrors
+      };
+    } finally {
+      connection.release();
     }
-    
-    logger.info(`Import completed: ${totalInserted} orders inserted, ${totalErrors} errors`);
-    
-    return {
-      success: true,
-      totalRows: jsonData.length,
-      inserted: totalInserted,
-      errors: totalErrors
-    };
     
   } catch (error) {
     logger.error('Error importing Excel file:', error);

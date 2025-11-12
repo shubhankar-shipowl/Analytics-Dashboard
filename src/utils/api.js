@@ -18,14 +18,29 @@ const apiCall = async (endpoint, options = {}) => {
 
   try {
     const response = await fetch(url, config);
-    const data = await response.json();
-
+    
+    // Check if response is ok before trying to parse JSON
     if (!response.ok) {
-      throw new Error(data.error?.message || data.error || 'API request failed');
+      // Try to get error message from response
+      let errorMessage = `API request failed with status ${response.status}`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error?.message || errorData.error || errorMessage;
+      } catch (e) {
+        // If JSON parsing fails, use status text
+        errorMessage = response.statusText || errorMessage;
+      }
+      throw new Error(errorMessage);
     }
-
+    
+    const data = await response.json();
     return data;
   } catch (error) {
+    // Enhanced error logging
+    if (error.name === 'TypeError' && error.message.includes('fetch')) {
+      console.error('API Error: Network error - Backend server may not be running:', error.message);
+      throw new Error('Cannot connect to backend server. Please ensure the backend is running on http://localhost:5000');
+    }
     console.error('API Error:', error);
     throw error;
   }
@@ -211,6 +226,11 @@ export const importAPI = {
 
     return data;
   },
+
+  // Delete all orders
+  clearAll: () => apiCall('/import/clear', {
+    method: 'DELETE'
+  }),
 
   // Get import history
   getHistory: (limit = 20, offset = 0) => {

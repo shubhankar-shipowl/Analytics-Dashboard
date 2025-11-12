@@ -22,11 +22,14 @@ const connectionConfig = {
   password: dbPassword,
   database: process.env.DB_NAME || 'dashboard_db',
   waitForConnections: true,
-  connectionLimit: 10,
+  connectionLimit: parseInt(process.env.DB_POOL_SIZE) || 20, // Increased from 10 to 20 for better concurrency
   queueLimit: 0,
   enableKeepAlive: true,
   keepAliveInitialDelay: 0,
   connectTimeout: 60000, // 60 seconds
+  // Optimize: Add connection reuse settings
+  acquireTimeout: 60000,
+  timeout: 60000,
   // SSL configuration for remote connections
   ssl: process.env.DB_SSL === 'true' ? {
     rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false'
@@ -35,7 +38,11 @@ const connectionConfig = {
   multipleStatements: false,
   dateStrings: false,
   supportBigNumbers: true,
-  bigNumberStrings: true
+  bigNumberStrings: true,
+  // Optimize: Enable connection compression for large queries
+  compress: true,
+  // Optimize: Use prepared statements cache
+  typeCast: true
 };
 
 // Create MySQL connection pool

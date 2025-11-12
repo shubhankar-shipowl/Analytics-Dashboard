@@ -132,10 +132,10 @@ router.post('/excel', upload.single('file'), async (req, res) => {
       importLogId = null;
     }
 
-    // Import the file
+    // Import the file with optimized batch size
     const result = await importExcelFile(filePath, {
       clearExisting: clearExisting === 'true' || clearExisting === true,
-      batchSize: 1000
+      batchSize: 5000 // Optimized: Increased from 1000 to 5000 for better performance
     });
 
     const duration = Date.now() - startTime;
@@ -279,6 +279,61 @@ router.get('/history/:id', async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /import/clear:
+ *   delete:
+ *     summary: Delete all orders from the database
+ *     tags: [Import]
+ *     description: WARNING - This will permanently delete ALL orders from the database. This action cannot be undone.
+ *     responses:
+ *       200:
+ *         description: All orders deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     deleted:
+ *                       type: integer
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.delete('/clear', async (req, res) => {
+  try {
+    const Order = require('../models/Order');
+    
+    logger.warn('⚠️ DELETE ALL ORDERS request received');
+    
+    const result = await Order.clearAll();
+    
+    logger.warn(`✅ All orders deleted. Total deleted: ${result.deleted || 0}`);
+    
+    res.json({
+      success: true,
+      message: `All orders deleted successfully. ${result.deleted || 0} orders were removed.`,
+      data: result
+    });
+  } catch (error) {
+    logger.error('Error deleting all orders:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to delete orders'
     });
   }
 });

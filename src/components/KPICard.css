@@ -8,6 +8,8 @@
     gap: 15px;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
     transition: transform 0.2s, box-shadow 0.2s;
+    min-height: 100px;
+    overflow: hidden;
   }
   
   .kpi-card:hover {
@@ -16,12 +18,16 @@
   }
   
   .kpi-icon {
-    font-size: 2.5rem;
+    font-size: 2rem;
     opacity: 0.9;
+    flex-shrink: 0;
+    min-width: 40px;
   }
   
   .kpi-content {
     flex: 1;
+    min-width: 0;
+    overflow: hidden;
   }
   
   .kpi-title {
@@ -29,9 +35,34 @@
     opacity: 0.9;
     margin-bottom: 5px;
     font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   
   .kpi-value {
-    font-size: 1.8rem;
+    font-size: 1.4rem;
     font-weight: bold;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    line-height: 1.3;
+    max-width: 100%;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  
+  /* Responsive font size for very long numbers */
+  @media (max-width: 768px) {
+    .kpi-value {
+      font-size: 1.1rem;
+    }
+  }
+  
+  /* For extremely long values, use smaller font */
+  .kpi-value.long-value {
+    font-size: 1rem;
+    line-height: 1.4;
+    -webkit-line-clamp: 3;
   }

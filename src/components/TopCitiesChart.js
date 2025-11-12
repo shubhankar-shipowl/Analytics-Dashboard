@@ -4,11 +4,29 @@ import './Chart.css';
 
 const TopCitiesChart = ({ data, by = 'orders', sortDirection = 'top' }) => {
   // Limit to exactly 10 cities
-  const formattedData = (data || []).slice(0, 10);
+  const formattedData = (data && Array.isArray(data) ? data : [])
+    .filter(item => item && item.city)
+    .slice(0, 10)
+    .map(item => ({
+      ...item,
+      orders: item.orders || 0,
+      revenue: parseFloat(item.revenue || 0)
+    }));
   
   const chartTitle = sortDirection === 'bottom' 
     ? `Bottom 10 Cities ${by === 'orders' ? 'by Orders' : 'by Revenue'}`
     : `Top 10 Cities ${by === 'orders' ? 'by Orders' : 'by Revenue'}`;
+
+  if (!formattedData || formattedData.length === 0) {
+    return (
+      <div className="chart-container">
+        <h3 className="chart-title">{chartTitle}</h3>
+        <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
+          No city data available
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="chart-container">
@@ -31,16 +49,32 @@ const TopCitiesChart = ({ data, by = 'orders', sortDirection = 'top' }) => {
           <Tooltip 
             formatter={(value, name) => {
               if (by === 'revenue') {
-                return [`₹${value.toLocaleString('en-IN')}`, 'Revenue'];
+                return [`₹${parseFloat(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 'Revenue'];
               }
-              return [value, 'Orders'];
+              return [parseInt(value || 0).toLocaleString('en-IN'), 'Orders'];
             }}
             labelFormatter={(label) => `City: ${label}`}
-            contentStyle={{ 
-              backgroundColor: 'rgba(255, 255, 255, 0.95)',
-              border: '1px solid #ccc',
-              borderRadius: '4px',
-              padding: '8px'
+            content={({ active, payload }) => {
+              if (active && payload && payload.length) {
+                const data = payload[0].payload;
+                return (
+                  <div style={{
+                    background: 'white',
+                    padding: '10px',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '6px',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                  }}>
+                    <p style={{ fontWeight: 'bold', marginBottom: '5px' }}>City: {data.city}</p>
+                    {by === 'revenue' ? (
+                      <p>Revenue: <strong>₹{parseFloat(data.revenue || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
+                    ) : (
+                      <p>Orders: <strong>{parseInt(data.orders || 0).toLocaleString('en-IN')}</strong></p>
+                    )}
+                  </div>
+                );
+              }
+              return null;
             }}
           />
           <Legend 

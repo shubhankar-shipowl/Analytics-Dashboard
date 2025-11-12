@@ -3,6 +3,22 @@ const router = express.Router();
 const { query } = require('../config/database');
 const logger = require('../utils/logger');
 
+// Helper function to build optimized date filters (avoids DATE() function for better index usage)
+const buildDateFilters = (whereClause, params, startDate, endDate) => {
+  if (startDate) {
+    whereClause += ' AND order_date >= ?';
+    params.push(startDate);
+  }
+  if (endDate) {
+    // Optimize: Use < next day for better index usage instead of DATE() function
+    const nextDay = new Date(endDate);
+    nextDay.setDate(nextDay.getDate() + 1);
+    whereClause += ' AND order_date < ?';
+    params.push(nextDay.toISOString().split('T')[0]);
+  }
+  return { whereClause, params };
+};
+
 /**
  * Analytics API Routes
  * 
@@ -49,12 +65,16 @@ router.get('/kpis', async (req, res) => {
     const params = [];
 
     if (startDate) {
-      whereClause += ' AND DATE(order_date) >= DATE(?)';
+      // Optimize: Avoid DATE() function on column for better index usage
+      whereClause += ' AND order_date >= ?';
       params.push(startDate);
     }
     if (endDate) {
-      whereClause += ' AND DATE(order_date) <= DATE(?)';
-      params.push(endDate);
+      // Optimize: Use < next day for better index usage
+      const nextDay = new Date(endDate);
+      nextDay.setDate(nextDay.getDate() + 1);
+      whereClause += ' AND order_date < ?';
+      params.push(nextDay.toISOString().split('T')[0]);
     }
     if (product) {
       whereClause += ' AND product_name LIKE ?';
@@ -191,7 +211,10 @@ router.get('/kpis', async (req, res) => {
       ? (topPincodeResult[0].deliveredCount || 0)
       : 0;
     const topPincodeRatio = topPincodeResult && topPincodeResult.length > 0
-      ? parseFloat((topPincodeResult[0].deliveryRatio || 0).toFixed(2))
+      ? (() => {
+          const ratioNum = parseFloat(topPincodeResult[0].deliveryRatio) || 0;
+          return parseFloat(ratioNum.toFixed(2));
+        })()
       : 0;
 
     res.json({
@@ -260,12 +283,16 @@ router.get('/order-status', async (req, res) => {
     const params = [];
 
     if (startDate) {
-      whereClause += ' AND DATE(order_date) >= DATE(?)';
+      // Optimize: Avoid DATE() function on column for better index usage
+      whereClause += ' AND order_date >= ?';
       params.push(startDate);
     }
     if (endDate) {
-      whereClause += ' AND DATE(order_date) <= DATE(?)';
-      params.push(endDate);
+      // Optimize: Use < next day for better index usage
+      const nextDay = new Date(endDate);
+      nextDay.setDate(nextDay.getDate() + 1);
+      whereClause += ' AND order_date < ?';
+      params.push(nextDay.toISOString().split('T')[0]);
     }
     if (product) {
       whereClause += ' AND product_name LIKE ?';
@@ -327,12 +354,16 @@ router.get('/payment-methods', async (req, res) => {
     const params = [];
 
     if (startDate) {
-      whereClause += ' AND DATE(order_date) >= DATE(?)';
+      // Optimize: Avoid DATE() function on column for better index usage
+      whereClause += ' AND order_date >= ?';
       params.push(startDate);
     }
     if (endDate) {
-      whereClause += ' AND DATE(order_date) <= DATE(?)';
-      params.push(endDate);
+      // Optimize: Use < next day for better index usage
+      const nextDay = new Date(endDate);
+      nextDay.setDate(nextDay.getDate() + 1);
+      whereClause += ' AND order_date < ?';
+      params.push(nextDay.toISOString().split('T')[0]);
     }
     if (product) {
       whereClause += ' AND product_name LIKE ?';
@@ -392,12 +423,16 @@ router.get('/fulfillment-partners', async (req, res) => {
     const params = [];
 
     if (startDate) {
-      whereClause += ' AND DATE(order_date) >= DATE(?)';
+      // Optimize: Avoid DATE() function on column for better index usage
+      whereClause += ' AND order_date >= ?';
       params.push(startDate);
     }
     if (endDate) {
-      whereClause += ' AND DATE(order_date) <= DATE(?)';
-      params.push(endDate);
+      // Optimize: Use < next day for better index usage
+      const nextDay = new Date(endDate);
+      nextDay.setDate(nextDay.getDate() + 1);
+      whereClause += ' AND order_date < ?';
+      params.push(nextDay.toISOString().split('T')[0]);
     }
     if (product) {
       whereClause += ' AND product_name LIKE ?';
@@ -430,11 +465,15 @@ router.get('/fulfillment-partners', async (req, res) => {
 
     const results = await query(sql, params);
     
-    const data = results && Array.isArray(results) ? results.map(item => ({
-      partner: item.partner || 'Unknown',
-      orders: item.orders || 0,
-      revenue: parseFloat((item.revenue || 0).toFixed(2))
-    })) : [];
+    const data = results && Array.isArray(results) ? results.map(item => {
+      // Convert revenue to number first, then format
+      const revenueValue = parseFloat(item.revenue) || 0;
+      return {
+        partner: item.partner || 'Unknown',
+        orders: item.orders || 0,
+        revenue: parseFloat(revenueValue.toFixed(2))
+      };
+    }) : [];
 
     res.json({
       success: true,
@@ -458,12 +497,16 @@ router.get('/top-products', async (req, res) => {
     const params = [];
 
     if (startDate) {
-      whereClause += ' AND DATE(order_date) >= DATE(?)';
+      // Optimize: Avoid DATE() function on column for better index usage
+      whereClause += ' AND order_date >= ?';
       params.push(startDate);
     }
     if (endDate) {
-      whereClause += ' AND DATE(order_date) <= DATE(?)';
-      params.push(endDate);
+      // Optimize: Use < next day for better index usage
+      const nextDay = new Date(endDate);
+      nextDay.setDate(nextDay.getDate() + 1);
+      whereClause += ' AND order_date < ?';
+      params.push(nextDay.toISOString().split('T')[0]);
     }
     if (pincode) {
       whereClause += ' AND pincode = ?';
@@ -490,11 +533,15 @@ router.get('/top-products', async (req, res) => {
     params.push(parseInt(limit));
     const results = await query(sql, params);
 
-    const data = results && Array.isArray(results) ? results.map(item => ({
-      product: item.product || 'Unknown',
-      orders: item.orders || 0,
-      revenue: parseFloat((item.revenue || 0).toFixed(2))
-    })) : [];
+    const data = results && Array.isArray(results) ? results.map(item => {
+      // Convert revenue to number first, then format
+      const revenueValue = parseFloat(item.revenue) || 0;
+      return {
+        product: item.product || 'Unknown',
+        orders: item.orders || 0,
+        revenue: parseFloat(revenueValue.toFixed(2))
+      };
+    }) : [];
 
     res.json({
       success: true,
@@ -518,12 +565,16 @@ router.get('/top-cities', async (req, res) => {
     const params = [];
 
     if (startDate) {
-      whereClause += ' AND DATE(order_date) >= DATE(?)';
+      // Optimize: Avoid DATE() function on column for better index usage
+      whereClause += ' AND order_date >= ?';
       params.push(startDate);
     }
     if (endDate) {
-      whereClause += ' AND DATE(order_date) <= DATE(?)';
-      params.push(endDate);
+      // Optimize: Use < next day for better index usage
+      const nextDay = new Date(endDate);
+      nextDay.setDate(nextDay.getDate() + 1);
+      whereClause += ' AND order_date < ?';
+      params.push(nextDay.toISOString().split('T')[0]);
     }
 
     // Determine sort direction: 'top' = DESC, 'bottom' = ASC
@@ -548,11 +599,15 @@ router.get('/top-cities', async (req, res) => {
     params.push(parseInt(limit));
     const results = await query(sql, params);
 
-    const data = results && Array.isArray(results) ? results.map(item => ({
-      city: item.city || 'Unknown',
-      orders: item.orders || 0,
-      revenue: parseFloat((item.revenue || 0).toFixed(2))
-    })) : [];
+    const data = results && Array.isArray(results) ? results.map(item => {
+      // Convert revenue to number first, then format
+      const revenueValue = parseFloat(item.revenue) || 0;
+      return {
+        city: item.city || 'Unknown',
+        orders: item.orders || 0,
+        revenue: parseFloat(revenueValue.toFixed(2))
+      };
+    }) : [];
 
     res.json({
       success: true,
@@ -576,12 +631,16 @@ router.get('/trends', async (req, res) => {
     const params = [];
 
     if (startDate) {
-      whereClause += ' AND DATE(order_date) >= DATE(?)';
+      // Optimize: Avoid DATE() function on column for better index usage
+      whereClause += ' AND order_date >= ?';
       params.push(startDate);
     }
     if (endDate) {
-      whereClause += ' AND DATE(order_date) <= DATE(?)';
-      params.push(endDate);
+      // Optimize: Use < next day for better index usage
+      const nextDay = new Date(endDate);
+      nextDay.setDate(nextDay.getDate() + 1);
+      whereClause += ' AND order_date < ?';
+      params.push(nextDay.toISOString().split('T')[0]);
     }
     if (product) {
       whereClause += ' AND product_name LIKE ?';
@@ -618,7 +677,10 @@ router.get('/trends', async (req, res) => {
 
     const data = results && Array.isArray(results) ? results.map(item => ({
       date: item.date || null,
-      value: parseFloat((item.value || 0).toFixed(2))
+      value: (() => {
+        const valueNum = parseFloat(item.value) || 0;
+        return parseFloat(valueNum.toFixed(2));
+      })()
     })) : [];
 
     res.json({
@@ -680,12 +742,16 @@ router.get('/delivery-ratio', async (req, res) => {
     const params = [];
 
     if (startDate) {
-      whereClause += ' AND DATE(order_date) >= DATE(?)';
+      // Optimize: Avoid DATE() function on column for better index usage
+      whereClause += ' AND order_date >= ?';
       params.push(startDate);
     }
     if (endDate) {
-      whereClause += ' AND DATE(order_date) <= DATE(?)';
-      params.push(endDate);
+      // Optimize: Use < next day for better index usage
+      const nextDay = new Date(endDate);
+      nextDay.setDate(nextDay.getDate() + 1);
+      whereClause += ' AND order_date < ?';
+      params.push(nextDay.toISOString().split('T')[0]);
     }
     if (product) {
       whereClause += ' AND product_name LIKE ?';
@@ -848,12 +914,16 @@ router.get('/good-bad-pincodes', async (req, res) => {
     const params = [];
 
     if (startDate) {
-      whereClause += ' AND DATE(order_date) >= DATE(?)';
+      // Optimize: Avoid DATE() function on column for better index usage
+      whereClause += ' AND order_date >= ?';
       params.push(startDate);
     }
     if (endDate) {
-      whereClause += ' AND DATE(order_date) <= DATE(?)';
-      params.push(endDate);
+      // Optimize: Use < next day for better index usage
+      const nextDay = new Date(endDate);
+      nextDay.setDate(nextDay.getDate() + 1);
+      whereClause += ' AND order_date < ?';
+      params.push(nextDay.toISOString().split('T')[0]);
     }
     if (product) {
       whereClause += ' AND product_name LIKE ?';
@@ -923,7 +993,10 @@ router.get('/good-bad-pincodes', async (req, res) => {
       totalOrders: item.actualOrders || 0, // Keep for backward compatibility
       actualOrders: item.actualOrders || 0,
       deliveredCount: item.deliveredCount || 0,
-      ratio: parseFloat((item.ratio || 0).toFixed(2))
+      ratio: (() => {
+        const ratioNum = parseFloat(item.ratio) || 0;
+        return parseFloat(ratioNum.toFixed(2));
+      })()
     })) : [];
 
     // Separate into good (> 60%) and bad (< 20%)
@@ -957,12 +1030,16 @@ router.get('/top-ndr-cities', async (req, res) => {
     const params = [];
 
     if (startDate) {
-      whereClause += ' AND DATE(order_date) >= DATE(?)';
+      // Optimize: Avoid DATE() function on column for better index usage
+      whereClause += ' AND order_date >= ?';
       params.push(startDate);
     }
     if (endDate) {
-      whereClause += ' AND DATE(order_date) <= DATE(?)';
-      params.push(endDate);
+      // Optimize: Use < next day for better index usage
+      const nextDay = new Date(endDate);
+      nextDay.setDate(nextDay.getDate() + 1);
+      whereClause += ' AND order_date < ?';
+      params.push(nextDay.toISOString().split('T')[0]);
     }
     if (product) {
       whereClause += ' AND product_name LIKE ?';
@@ -1021,7 +1098,10 @@ router.get('/top-ndr-cities', async (req, res) => {
       cancelledOrders: item.cancelledOrders || 0,
       ndrCount: item.ndrCount || 0,
       nonCancelledOrders: item.nonCancelledOrders || 0,
-      ndrRatio: parseFloat((item.ndrRatio || 0).toFixed(2))
+      ndrRatio: (() => {
+        const ndrRatioNum = parseFloat(item.ndrRatio) || 0;
+        return parseFloat(ndrRatioNum.toFixed(2));
+      })()
     })) : [];
 
     res.json({

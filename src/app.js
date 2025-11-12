@@ -7,7 +7,6 @@ import {
     getOrderStatusDistribution,
     getDeliveryRatio,
     getDeliveryRatioByPartner,
-    getPaymentMethodDistribution,
     getFulfillmentPartnerAnalysis,
     getPriceRangeDistribution,
     getDailyTrend,
@@ -24,7 +23,6 @@ import {
   refreshBackendCheck,
   getKPIs as fetchKPIs,
   getOrderStatus as fetchOrderStatus,
-  getPaymentMethods as fetchPaymentMethods,
   getFulfillmentPartners as fetchFulfillmentPartners,
   getTopProducts as fetchTopProducts,
   getTopCities as fetchTopCities,
@@ -37,7 +35,6 @@ import KPISection from './components/KPISection';
 import Filters from './components/Filters';
 import FileUpload from './components/FileUpload';
 import OrderStatusChart from './components/OrderStatusChart';
-import PaymentMethodChart from './components/PaymentMethodChart';
 import FulfillmentPartnerChart from './components/FulfillmentPartnerChart';
 import PriceRangeChart from './components/PriceRangeChart';
 import TrendChart from './components/TrendChart';
@@ -50,7 +47,9 @@ function App() {
   const [data, setData] = useState([]);
   const [filteredData, setFilteredData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
+  const [backendConnected, setBackendConnected] = useState(false);
   
   // Filters
   const [dateFilter, setDateFilter] = useState('Lifetime');
@@ -79,7 +78,6 @@ function App() {
   const [orderStatusData, setOrderStatusData] = useState([]);
   const [deliveryRatioData, setDeliveryRatioData] = useState({ ratio: 0, deliveredCount: 0, totalOrders: 0 });
   const [deliveryRatioByPartnerData, setDeliveryRatioByPartnerData] = useState([]);
-  const [paymentMethodData, setPaymentMethodData] = useState([]);
   const [fulfillmentPartnerData, setFulfillmentPartnerData] = useState([]);
   const [priceRangeData, setPriceRangeData] = useState([]);
   const [trendData, setTrendData] = useState([]);
@@ -89,64 +87,83 @@ function App() {
   const [topNDRCitiesData, setTopNDRCitiesData] = useState([]);
   const [goodBadPincodesData, setGoodBadPincodesData] = useState({ good: [], bad: [] });
 
+  // Helper function to format date as YYYY-MM-DD for SQL (using local time, not UTC)
+  const formatDateForSQL = React.useCallback((date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }, []);
+
   // Build date filters for data loading - memoized to prevent unnecessary recalculations
   const getDateFilters = React.useCallback(() => {
     const filters = {};
     
     if (dateFilter !== 'Lifetime') {
       if (dateFilter === 'Custom' && customStartDate && customEndDate) {
-        filters.startDate = customStartDate;
-        filters.endDate = customEndDate;
+        // Ensure custom dates are in YYYY-MM-DD format
+        filters.startDate = customStartDate.includes('T') ? customStartDate.split('T')[0] : customStartDate;
+        filters.endDate = customEndDate.includes('T') ? customEndDate.split('T')[0] : customEndDate;
       } else {
         // Calculate date range for other filters
         const today = new Date();
+        // Set to local midnight to avoid timezone issues
+        today.setHours(0, 0, 0, 0);
         let startDate = new Date();
         
         switch (dateFilter) {
           case 'Today':
-            startDate.setHours(0, 0, 0, 0);
-            filters.startDate = startDate.toISOString().split('T')[0];
-            filters.endDate = today.toISOString().split('T')[0];
+            startDate = new Date(today);
+            filters.startDate = formatDateForSQL(startDate);
+            filters.endDate = formatDateForSQL(today);
             break;
           case 'Last 7 Days':
-            startDate.setDate(today.getDate() - 6);
+            startDate = new Date(today);
+            startDate.setDate(today.getDate() - 6); // -6 to get 7 days including today
             startDate.setHours(0, 0, 0, 0);
-            filters.startDate = startDate.toISOString().split('T')[0];
-            filters.endDate = today.toISOString().split('T')[0];
+            filters.startDate = formatDateForSQL(startDate);
+            filters.endDate = formatDateForSQL(today);
             break;
           case 'Last 30 Days':
-            startDate.setDate(today.getDate() - 29);
+            startDate = new Date(today);
+            startDate.setDate(today.getDate() - 29); // -29 to get 30 days including today
             startDate.setHours(0, 0, 0, 0);
-            filters.startDate = startDate.toISOString().split('T')[0];
-            filters.endDate = today.toISOString().split('T')[0];
+            filters.startDate = formatDateForSQL(startDate);
+            filters.endDate = formatDateForSQL(today);
             break;
           case 'Last 90 Days':
-            startDate.setDate(today.getDate() - 89);
+            startDate = new Date(today);
+            startDate.setDate(today.getDate() - 89); // -89 to get 90 days including today
             startDate.setHours(0, 0, 0, 0);
-            filters.startDate = startDate.toISOString().split('T')[0];
-            filters.endDate = today.toISOString().split('T')[0];
+            filters.startDate = formatDateForSQL(startDate);
+            filters.endDate = formatDateForSQL(today);
             break;
           case 'This Month':
             startDate = new Date(today.getFullYear(), today.getMonth(), 1);
-            filters.startDate = startDate.toISOString().split('T')[0];
-            filters.endDate = today.toISOString().split('T')[0];
+            startDate.setHours(0, 0, 0, 0);
+            filters.startDate = formatDateForSQL(startDate);
+            filters.endDate = formatDateForSQL(today);
             break;
           case 'Last Month':
             startDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+            startDate.setHours(0, 0, 0, 0);
             const endDate = new Date(today.getFullYear(), today.getMonth(), 0);
-            filters.startDate = startDate.toISOString().split('T')[0];
-            filters.endDate = endDate.toISOString().split('T')[0];
+            endDate.setHours(23, 59, 59, 999);
+            filters.startDate = formatDateForSQL(startDate);
+            filters.endDate = formatDateForSQL(endDate);
             break;
           case 'This Year':
             startDate = new Date(today.getFullYear(), 0, 1);
-            filters.startDate = startDate.toISOString().split('T')[0];
-            filters.endDate = today.toISOString().split('T')[0];
+            startDate.setHours(0, 0, 0, 0);
+            filters.startDate = formatDateForSQL(startDate);
+            filters.endDate = formatDateForSQL(today);
             break;
           case 'Yearly':
+            startDate = new Date(today);
             startDate.setFullYear(today.getFullYear() - 1);
             startDate.setHours(0, 0, 0, 0);
-            filters.startDate = startDate.toISOString().split('T')[0];
-            filters.endDate = today.toISOString().split('T')[0];
+            filters.startDate = formatDateForSQL(startDate);
+            filters.endDate = formatDateForSQL(today);
             break;
           default:
             break;
@@ -154,25 +171,64 @@ function App() {
       }
     }
     
-    console.log('📅 Date filters calculated:', { dateFilter, filters });
+    const todayForLog = new Date();
+    todayForLog.setHours(0, 0, 0, 0);
+    console.log('📅 Date filters calculated:', { 
+      dateFilter, 
+      TODAY: formatDateForSQL(todayForLog),
+      filters, 
+      timestamp: new Date().toISOString() 
+    });
     return filters;
-  }, [dateFilter, customStartDate, customEndDate]);
+  }, [dateFilter, customStartDate, customEndDate, formatDateForSQL]);
+
+  // Track if this is the initial load
+  const isInitialLoadRef = React.useRef(true);
 
   useEffect(() => {
     // Load data from backend API or local Excel file with date filters
     const fetchData = async () => {
       try {
-        setLoading(true);
+        // Only show full-page loader on initial load, use refreshing state for filter changes
+        if (isInitialLoadRef.current) {
+          setLoading(true);
+        } else {
+          setRefreshing(true);
+        }
         setError(null); // Clear any previous errors
         const dateFilters = getDateFilters();
         console.log('📅 Loading data with date filters:', { dateFilter, dateFilters });
+        
+        // Check backend status before loading
+        const wasBackendAvailable = isUsingBackend();
         const loadedData = await loadData(false, dateFilters);
+        const isBackendAvailable = isUsingBackend();
+        
+        // Update backend connection status
+        setBackendConnected(isBackendAvailable);
+        
+        // Log if backend status changed
+        if (wasBackendAvailable !== isBackendAvailable) {
+          console.log(`🔄 Backend status changed: ${wasBackendAvailable} → ${isBackendAvailable}`);
+        }
+        
         console.log(`✅ Loaded ${loadedData.length} records with date filter: ${dateFilter}`);
         setData(loadedData);
-        setLoading(false);
+        if (isInitialLoadRef.current) {
+          setLoading(false);
+          isInitialLoadRef.current = false;
+        } else {
+          setRefreshing(false);
+        }
       } catch (err) {
+        // Check backend status even on error
+        const isBackendAvailable = isUsingBackend();
+        setBackendConnected(isBackendAvailable);
+        
         setError(err.message);
         setLoading(false);
+        setRefreshing(false);
+        isInitialLoadRef.current = false;
         console.error('❌ Error loading data:', err);
       }
     };
@@ -183,7 +239,7 @@ function App() {
   // Handle file upload success
   const handleUploadSuccess = async (result) => {
     try {
-      setLoading(true);
+      setRefreshing(true);
       setError(null);
       
       // Force refresh backend check and reload data after successful upload
@@ -196,20 +252,29 @@ function App() {
       const dateFilters = getDateFilters();
       const loadedData = await loadData(true, dateFilters);
       
+      // Update backend connection status after reload
+      const isBackendAvailable = isUsingBackend();
+      setBackendConnected(isBackendAvailable);
+      
       if (loadedData && loadedData.length > 0) {
         setData(loadedData);
         console.log(`✅ Dashboard refreshed with ${loadedData.length} records`);
+        isInitialLoadRef.current = false; // Mark as no longer initial load
       } else {
         console.warn('⚠️ No data loaded after upload');
         // Still set empty array to clear old data
         setData([]);
       }
       
-      setLoading(false);
+      setRefreshing(false);
     } catch (err) {
+      // Update backend status even on error
+      const isBackendAvailable = isUsingBackend();
+      setBackendConnected(isBackendAvailable);
+      
       console.error('Error reloading data after upload:', err);
       setError('Failed to refresh dashboard. Please reload the page.');
-      setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -261,68 +326,81 @@ function App() {
     setFilteredData(filtered);
   }, [data, productFilter, pincodeFilter]);
 
-  // Helper function to build filter object for API calls
-  const buildFilters = () => {
+  // Helper function to build filter object for API calls - memoized to ensure latest values
+  const buildFilters = React.useCallback(() => {
     const filters = {};
     
     // Date filters
     if (dateFilter !== 'Lifetime') {
       if (dateFilter === 'Custom' && customStartDate && customEndDate) {
-        filters.startDate = customStartDate;
-        filters.endDate = customEndDate;
+        // Ensure custom dates are in YYYY-MM-DD format
+        filters.startDate = customStartDate.includes('T') ? customStartDate.split('T')[0] : customStartDate;
+        filters.endDate = customEndDate.includes('T') ? customEndDate.split('T')[0] : customEndDate;
       } else {
-        // Calculate date range for other filters
+        // Calculate date range for other filters using local time (same as getDateFilters)
         const today = new Date();
+        // Set to local midnight to avoid timezone issues
+        today.setHours(0, 0, 0, 0);
         let startDate = new Date();
         
         switch (dateFilter) {
           case 'Today':
-            startDate.setHours(0, 0, 0, 0);
-            filters.startDate = startDate.toISOString().split('T')[0];
-            filters.endDate = today.toISOString().split('T')[0];
+            startDate = new Date(today);
+            filters.startDate = formatDateForSQL(startDate);
+            filters.endDate = formatDateForSQL(today);
             break;
           case 'Last 7 Days':
             // Last 7 Days: 7 days back from today (inclusive of today)
+            startDate = new Date(today);
             startDate.setDate(today.getDate() - 6); // -6 to get 7 days including today
             startDate.setHours(0, 0, 0, 0);
-            filters.startDate = startDate.toISOString().split('T')[0];
-            filters.endDate = today.toISOString().split('T')[0];
+            filters.startDate = formatDateForSQL(startDate);
+            filters.endDate = formatDateForSQL(today);
+            console.log(`📅 Last 7 Days: Comparing from TODAY (${formatDateForSQL(today)}) back to ${formatDateForSQL(startDate)}`);
             break;
           case 'Last 30 Days':
             // Last 30 Days: 30 days back from today (inclusive of today)
+            startDate = new Date(today);
             startDate.setDate(today.getDate() - 29); // -29 to get 30 days including today
             startDate.setHours(0, 0, 0, 0);
-            filters.startDate = startDate.toISOString().split('T')[0];
-            filters.endDate = today.toISOString().split('T')[0];
+            filters.startDate = formatDateForSQL(startDate);
+            filters.endDate = formatDateForSQL(today);
             break;
           case 'Last 90 Days':
             // Last 90 Days: 90 days back from today (inclusive of today)
+            startDate = new Date(today);
             startDate.setDate(today.getDate() - 89); // -89 to get 90 days including today
             startDate.setHours(0, 0, 0, 0);
-            filters.startDate = startDate.toISOString().split('T')[0];
-            filters.endDate = today.toISOString().split('T')[0];
+            filters.startDate = formatDateForSQL(startDate);
+            filters.endDate = formatDateForSQL(today);
             break;
           case 'This Month':
             startDate = new Date(today.getFullYear(), today.getMonth(), 1);
-            filters.startDate = startDate.toISOString().split('T')[0];
-            filters.endDate = today.toISOString().split('T')[0];
+            startDate.setHours(0, 0, 0, 0);
+            filters.startDate = formatDateForSQL(startDate);
+            filters.endDate = formatDateForSQL(today);
             break;
           case 'Last Month':
             startDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+            startDate.setHours(0, 0, 0, 0);
             const endDate = new Date(today.getFullYear(), today.getMonth(), 0);
-            filters.startDate = startDate.toISOString().split('T')[0];
-            filters.endDate = endDate.toISOString().split('T')[0];
+            endDate.setHours(23, 59, 59, 999);
+            filters.startDate = formatDateForSQL(startDate);
+            filters.endDate = formatDateForSQL(endDate);
             break;
           case 'This Year':
             startDate = new Date(today.getFullYear(), 0, 1);
-            filters.startDate = startDate.toISOString().split('T')[0];
-            filters.endDate = today.toISOString().split('T')[0];
+            startDate.setHours(0, 0, 0, 0);
+            filters.startDate = formatDateForSQL(startDate);
+            filters.endDate = formatDateForSQL(today);
             break;
           case 'Yearly':
             // Yearly means last 12 months
+            startDate = new Date(today);
             startDate.setFullYear(today.getFullYear() - 1);
-            filters.startDate = startDate.toISOString().split('T')[0];
-            filters.endDate = today.toISOString().split('T')[0];
+            startDate.setHours(0, 0, 0, 0);
+            filters.startDate = formatDateForSQL(startDate);
+            filters.endDate = formatDateForSQL(today);
             break;
           default:
             break;
@@ -341,8 +419,11 @@ function App() {
       filters.pincode = pincodeFilter;
     }
     
+    const todayForLog = new Date();
+    todayForLog.setHours(0, 0, 0, 0);
+    console.log('🔍 buildFilters() called with dateFilter:', dateFilter, 'TODAY:', formatDateForSQL(todayForLog), 'result:', filters);
     return filters;
-  };
+  }, [dateFilter, customStartDate, customEndDate, productFilter, pincodeFilter, formatDateForSQL]);
 
   // Fetch analytics data from backend when filters change
   useEffect(() => {
@@ -366,7 +447,6 @@ function App() {
         setOrderStatusData(getOrderStatusDistribution(filteredData));
         setDeliveryRatioData(getDeliveryRatio(filteredData));
         setDeliveryRatioByPartnerData(getDeliveryRatioByPartner(filteredData));
-        setPaymentMethodData(getPaymentMethodDistribution(filteredData));
         setFulfillmentPartnerData(getFulfillmentPartnerAnalysis(filteredData));
         setPriceRangeData(getPriceRangeDistribution(filteredData));
         setTrendData(getDailyTrend(filteredData, trendViewType));
@@ -374,14 +454,16 @@ function App() {
         setTopCitiesData(getTopCities(filteredData, cityViewType, 10, citySortDirection));
         setTopProductsByPincodeData(pincodeFilter !== 'All' ? getTopProductsByPincode(filteredData, pincodeFilter) : []);
         setTopNDRCitiesData(getTopNDRCities(filteredData, 10));
-        setGoodBadPincodesData(getGoodBadPincodesByProduct(filteredData, productFilter && productFilter.length > 0 ? productFilter[0] : null));
+        const localGoodBad = getGoodBadPincodesByProduct(filteredData, productFilter && productFilter.length > 0 ? productFilter[0] : null);
+        console.log('✅ Good/Bad Pincodes from local (no backend):', { good: localGoodBad.good?.length || 0, bad: localGoodBad.bad?.length || 0 });
+        setGoodBadPincodesData(localGoodBad);
         return;
       }
 
       // Fetch from backend APIs
       try {
         const filters = buildFilters();
-        console.log('📊 Fetching analytics with filters:', filters);
+        console.log('📊 Fetching analytics with filters (dateFilter:', dateFilter, '):', filters);
         
         // Fetch KPIs
         try {
@@ -458,13 +540,6 @@ function App() {
           setDeliveryRatioByPartnerData([]);
         }
 
-        // Fetch payment methods
-        const paymentMethods = await fetchPaymentMethods(filters);
-        if (paymentMethods) {
-          setPaymentMethodData(paymentMethods);
-        } else if (filteredData.length > 0) {
-          setPaymentMethodData(getPaymentMethodDistribution(filteredData));
-        }
 
         // Fetch fulfillment partners
         const fulfillmentPartners = await fetchFulfillmentPartners(filters);
@@ -507,14 +582,30 @@ function App() {
         }
 
         // Fetch good/bad pincodes by product
-        const goodBadPincodes = await fetchGoodBadPincodes(filters);
-        if (goodBadPincodes) {
-          setGoodBadPincodesData(goodBadPincodes);
-        } else if (filteredData.length > 0) {
-          const localGoodBad = getGoodBadPincodesByProduct(filteredData, productFilter && productFilter.length > 0 ? productFilter[0] : null);
-          setGoodBadPincodesData(localGoodBad);
-        } else {
-          setGoodBadPincodesData({ good: [], bad: [] });
+        try {
+          const goodBadPincodes = await fetchGoodBadPincodes(filters);
+          if (goodBadPincodes && (goodBadPincodes.good || goodBadPincodes.bad)) {
+            console.log('✅ Good/Bad Pincodes from backend:', { good: goodBadPincodes.good?.length || 0, bad: goodBadPincodes.bad?.length || 0 });
+            setGoodBadPincodesData(goodBadPincodes);
+          } else if (filteredData.length > 0) {
+            console.log('⚠️ Backend returned no data, using local calculation');
+            const localGoodBad = getGoodBadPincodesByProduct(filteredData, productFilter && productFilter.length > 0 ? productFilter[0] : null);
+            console.log('✅ Good/Bad Pincodes from local:', { good: localGoodBad.good?.length || 0, bad: localGoodBad.bad?.length || 0 });
+            setGoodBadPincodesData(localGoodBad);
+          } else {
+            console.log('⚠️ No filtered data available for good/bad pincodes');
+            setGoodBadPincodesData({ good: [], bad: [] });
+          }
+        } catch (error) {
+          console.error('❌ Error fetching good/bad pincodes:', error);
+          if (filteredData.length > 0) {
+            console.log('⚠️ Using local calculation as fallback');
+            const localGoodBad = getGoodBadPincodesByProduct(filteredData, productFilter && productFilter.length > 0 ? productFilter[0] : null);
+            console.log('✅ Good/Bad Pincodes from local fallback:', { good: localGoodBad.good?.length || 0, bad: localGoodBad.bad?.length || 0 });
+            setGoodBadPincodesData(localGoodBad);
+          } else {
+            setGoodBadPincodesData({ good: [], bad: [] });
+          }
         }
 
         // Fetch top products by pincode
@@ -551,7 +642,6 @@ function App() {
           setOrderStatusData(getOrderStatusDistribution(filteredData));
           setDeliveryRatioData(getDeliveryRatio(filteredData));
           setDeliveryRatioByPartnerData(getDeliveryRatioByPartner(filteredData));
-          setPaymentMethodData(getPaymentMethodDistribution(filteredData));
           setFulfillmentPartnerData(getFulfillmentPartnerAnalysis(filteredData));
           setPriceRangeData(getPriceRangeDistribution(filteredData));
           setTrendData(getDailyTrend(filteredData, trendViewType));
@@ -564,7 +654,7 @@ function App() {
     };
 
     fetchAnalytics();
-  }, [filteredData, dateFilter, customStartDate, customEndDate, productFilter, pincodeFilter, trendViewType, productViewType, cityViewType, citySortDirection]);
+  }, [filteredData, buildFilters, dateFilter, customStartDate, customEndDate, productFilter, pincodeFilter, trendViewType, productViewType, cityViewType, citySortDirection]);
 
   // Get filtered data for extracting unique values (data is already date-filtered from backend)
   const dataForFilterOptions = React.useMemo(() => {
@@ -682,26 +772,125 @@ function App() {
   }
 
   if (!data || data.length === 0) {
-    const usingBackend = isUsingBackend();
     return (
-      <div className="error-container">
-        <h2>No Data Available</h2>
-        <p>No data found in {usingBackend ? 'MySQL database' : 'local file'}.</p>
-        <div style={{ marginTop: '20px', padding: '15px', backgroundColor: '#d1ecf1', borderRadius: '4px', maxWidth: '600px', margin: '20px auto' }}>
-          <h3 style={{ marginTop: 0, color: '#0c5460' }}>To load data:</h3>
-          {usingBackend ? (
-            <ol style={{ textAlign: 'left', color: '#0c5460' }}>
-              <li>Upload an Excel file using the upload section in the sidebar</li>
-              <li>Or use the import script: <code>npm run import:excel</code></li>
-              <li>Or ensure data exists in the MySQL database</li>
-            </ol>
-          ) : (
-            <ol style={{ textAlign: 'left', color: '#0c5460' }}>
-              <li>Start the backend server: <code>npm run dev</code></li>
-              <li>Upload an Excel file using the upload section</li>
-              <li>Or ensure the Excel file exists at <code>/public/data/ForwardOrders-1762582722-21819 (1).xlsx</code></li>
-            </ol>
-          )}
+      <div className="App">
+        <header className="app-header">
+          <h1>📊 Order Dashboard</h1>
+          <div style={{ 
+            fontSize: '0.9rem', 
+            opacity: 0.9, 
+            marginTop: '5px',
+            padding: '6px 12px',
+            backgroundColor: backendConnected ? 'rgba(40, 167, 69, 0.1)' : 'rgba(255, 193, 7, 0.1)',
+            border: `1px solid ${backendConnected ? 'rgba(40, 167, 69, 0.3)' : 'rgba(255, 193, 7, 0.3)'}`,
+            borderRadius: '4px',
+            display: 'inline-block',
+            color: backendConnected ? '#28a745' : '#ffc107'
+          }}>
+            {backendConnected ? (
+              <>📡 <strong>Data Source:</strong> Database (MySQL) - 0 records</>
+            ) : (
+              <>📂 <strong>Data Source:</strong> Local Excel File - 0 records</>
+            )}
+          </div>
+        </header>
+
+        <div className="app-container">
+          <aside className="sidebar">
+            <FileUpload 
+              onUploadSuccess={handleUploadSuccess}
+              onUploadError={handleUploadError}
+              backendConnected={backendConnected}
+            />
+            <Filters
+              dateFilter={dateFilter}
+              onDateFilterChange={setDateFilter}
+              customStartDate={customStartDate}
+              onCustomStartDateChange={setCustomStartDate}
+              customEndDate={customEndDate}
+              onCustomEndDateChange={setCustomEndDate}
+              productFilter={productFilter}
+              onProductFilterChange={setProductFilter}
+              pincodeFilter={pincodeFilter}
+              onPincodeFilterChange={(value) => {
+                if (value !== 'All' && !uniquePincodes.includes(value)) {
+                  setPincodeFilter('All');
+                } else {
+                  setPincodeFilter(value);
+                }
+              }}
+              products={uniqueProducts}
+              pincodes={uniquePincodes}
+              viewType={trendViewType}
+              onViewTypeChange={setTrendViewType}
+            />
+          </aside>
+
+          <main className="main-content">
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minHeight: '60vh',
+              padding: '40px 20px',
+              textAlign: 'center'
+            }}>
+              <h2 style={{ 
+                color: 'var(--error-color)', 
+                fontSize: '2rem',
+                marginBottom: '15px'
+              }}>
+                No Data Available
+              </h2>
+              <p style={{ 
+                fontSize: '1.1rem', 
+                color: 'var(--text-secondary)',
+                marginBottom: '30px'
+              }}>
+                No data found in MySQL database.
+              </p>
+              <div style={{
+                backgroundColor: '#e6f7ff',
+                border: '2px solid #91d5ff',
+                borderRadius: '8px',
+                padding: '25px',
+                maxWidth: '600px',
+                textAlign: 'left',
+                marginTop: '20px'
+              }}>
+                <p style={{ 
+                  fontWeight: 'bold', 
+                  color: '#0050b3', 
+                  marginBottom: '15px',
+                  fontSize: '1.1rem'
+                }}>
+                  📤 To load data:
+                </p>
+                <ol style={{ 
+                  textAlign: 'left', 
+                  color: '#0c5460',
+                  fontSize: '1rem',
+                  lineHeight: '1.8',
+                  paddingLeft: '20px'
+                }}>
+                  <li style={{ marginBottom: '10px' }}>
+                    <strong>Upload an Excel file</strong> using the upload section in the sidebar (on the left)
+                  </li>
+                  <li style={{ marginBottom: '10px' }}>
+                    Or use the import script: <code style={{ 
+                      backgroundColor: '#f0f0f0', 
+                      padding: '2px 6px', 
+                      borderRadius: '3px' 
+                    }}>npm run import:excel</code>
+                  </li>
+                  <li>
+                    Or ensure data exists in the MySQL database
+                  </li>
+                </ol>
+              </div>
+            </div>
+          </main>
         </div>
       </div>
     );
@@ -728,13 +917,13 @@ function App() {
           opacity: 0.9, 
           marginTop: '5px',
           padding: '6px 12px',
-          backgroundColor: isUsingBackend() ? 'rgba(40, 167, 69, 0.1)' : 'rgba(255, 193, 7, 0.1)',
-          border: `1px solid ${isUsingBackend() ? 'rgba(40, 167, 69, 0.3)' : 'rgba(255, 193, 7, 0.3)'}`,
+          backgroundColor: backendConnected ? 'rgba(40, 167, 69, 0.1)' : 'rgba(255, 193, 7, 0.1)',
+          border: `1px solid ${backendConnected ? 'rgba(40, 167, 69, 0.3)' : 'rgba(255, 193, 7, 0.3)'}`,
           borderRadius: '4px',
           display: 'inline-block',
-          color: isUsingBackend() ? '#28a745' : '#ffc107'
+          color: backendConnected ? '#28a745' : '#ffc107'
         }}>
-          {isUsingBackend() ? (
+          {backendConnected ? (
             <>📡 <strong>Data Source:</strong> Database (MySQL) - {data.length.toLocaleString()} records</>
           ) : (
             <>📂 <strong>Data Source:</strong> Local Excel File - {data.length.toLocaleString()} records</>
@@ -742,12 +931,39 @@ function App() {
         </div>
       </header>
 
+      {refreshing && (
+        <div style={{
+          position: 'fixed',
+          top: '80px',
+          right: '20px',
+          backgroundColor: 'rgba(255, 139, 66, 0.95)',
+          color: 'white',
+          padding: '10px 20px',
+          borderRadius: '6px',
+          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+          zIndex: 1000,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          fontSize: '0.9rem',
+          fontWeight: '500'
+        }}>
+          <div className="spinner" style={{ 
+            width: '16px', 
+            height: '16px', 
+            borderWidth: '2px',
+            margin: 0
+          }}></div>
+          <span>Refreshing data...</span>
+        </div>
+      )}
+
       <div className="app-container">
         <aside className="sidebar">
           <FileUpload 
             onUploadSuccess={handleUploadSuccess}
             onUploadError={handleUploadError}
-            backendConnected={isUsingBackend()}
+            backendConnected={backendConnected}
           />
           <Filters
             dateFilter={dateFilter}
@@ -785,7 +1001,6 @@ function App() {
             filteredData={filteredData}
           />
 
-          <PaymentMethodChart data={paymentMethodData} />
 
           <FulfillmentPartnerChart data={fulfillmentPartnerData} />
 

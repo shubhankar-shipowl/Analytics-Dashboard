@@ -106,7 +106,8 @@ const OrderStatusChart = ({ data, deliveryRatio, deliveryRatioByPartner, filtere
               background: 'var(--background-color)',
               borderRadius: '8px',
               textAlign: 'center',
-              width: '100%'
+              width: '100%',
+              boxSizing: 'border-box'
             }}>
               <div style={{ 
                 fontSize: '1.2rem', 
@@ -120,91 +121,128 @@ const OrderStatusChart = ({ data, deliveryRatio, deliveryRatioByPartner, filtere
                 fontSize: '2rem', 
                 fontWeight: 'bold', 
                 color: 'var(--primary-color)',
-                marginBottom: '5px'
+                marginBottom: '5px',
+                wordBreak: 'break-word'
               }}>
                 {deliveryRatio.ratio}%
               </div>
               <div style={{ 
                 color: 'var(--text-muted)',
-                fontSize: '0.85rem'
+                fontSize: '0.85rem',
+                wordBreak: 'break-word'
               }}>
                 {deliveryRatio.deliveredCount.toLocaleString()} out of {deliveryRatio.totalOrders.toLocaleString()} orders
               </div>
             </div>
           )}
-          <div style={{ width: '100%' }}>
-            <ResponsiveContainer width="100%" height={400}>
-            <BarChart 
-              key={`delivery-ratio-${deliveryRatioByPartner?.length || 0}-${deliveryRatioByPartner?.map(p => `${p.partner}-${p.ratio}`).join(',') || ''}`}
-              data={deliveryRatioByPartner || []}
-              layout="vertical"
-              margin={{ top: 5, right: 30, left: 120, bottom: 5 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis type="number" domain={[0, 100]} />
-              <YAxis dataKey="partner" type="category" width={100} />
-              <Tooltip 
-                formatter={(value, name, props) => {
-                  if (name === 'ratioValue') {
-                    return [`${value.toFixed(2)}%`, 'Delivery Ratio'];
-                  }
-                  return [value, name];
-                }}
-                labelFormatter={(label) => `Partner: ${label}`}
-                content={({ active, payload }) => {
-                  if (active && payload && payload.length) {
-                    const data = payload[0].payload;
-                    return (
-                      <div style={{
-                        background: 'white',
-                        padding: '10px',
-                        border: '1px solid #e2e8f0',
-                        borderRadius: '6px',
-                        boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
-                      }}>
-                        <p style={{ fontWeight: 'bold', marginBottom: '5px' }}>{data.partner}</p>
-                        <p>Delivery Ratio: <strong>{data.ratio}%</strong></p>
-                        <p>Delivered: {data.deliveredCount.toLocaleString()}</p>
-                        <p>Total Orders: {data.totalOrders.toLocaleString()}</p>
-                      </div>
-                    );
-                  }
-                  return null;
-                }}
-              />
-              <Legend />
-              <Bar 
-                dataKey="ratioValue" 
-                fill="var(--primary-color)"
-                name="Delivery Ratio (%)"
-              />
-            </BarChart>
-          </ResponsiveContainer>
+          <div style={{ width: '100%', minHeight: '400px' }}>
+            {deliveryRatioByPartner && deliveryRatioByPartner.length > 0 ? (
+              <ResponsiveContainer width="100%" height={400}>
+                <BarChart 
+                  key={`delivery-ratio-${deliveryRatioByPartner?.length || 0}-${deliveryRatioByPartner?.map(p => `${p.partner}-${p.ratio}`).join(',') || ''}`}
+                  data={deliveryRatioByPartner || []}
+                  layout="vertical"
+                  margin={{ top: 5, right: 30, left: 120, bottom: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis type="number" domain={[0, 100]} />
+                  <YAxis dataKey="partner" type="category" width={100} />
+                  <Tooltip 
+                    formatter={(value, name, props) => {
+                      if (name === 'ratioValue') {
+                        return [`${value.toFixed(2)}%`, 'Delivery Ratio'];
+                      }
+                      return [value, name];
+                    }}
+                    labelFormatter={(label) => `Partner: ${label}`}
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        const data = payload[0].payload;
+                        return (
+                          <div style={{
+                            background: 'white',
+                            padding: '10px',
+                            border: '1px solid #e2e8f0',
+                            borderRadius: '6px',
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                          }}>
+                            <p style={{ fontWeight: 'bold', marginBottom: '5px' }}>{data.partner}</p>
+                            <p>Delivery Ratio: <strong>{data.ratio}%</strong></p>
+                            <p>Delivered: {data.deliveredCount.toLocaleString()}</p>
+                            <p>Total Orders: {data.totalOrders.toLocaleString()}</p>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <Legend />
+                  <Bar 
+                    dataKey="ratioValue" 
+                    fill="var(--primary-color)"
+                    name="Delivery Ratio (%)"
+                    radius={[0, 4, 4, 0]}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                No delivery ratio data available
+              </div>
+            )}
           </div>
         </div>
         <div className="chart-item">
           <h4>By Percentage</h4>
-          <div style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-              <Pie
-                data={data}
-                cx="50%"
-                cy="50%"
-                labelLine={true}
-                label={({ status, percentage }) => percentage > 2 ? `${status}: ${percentage}%` : ''}
-                outerRadius={100}
-                fill="#8884d8"
-                dataKey="count"
-              >
-                  {data.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
+          {data && data.length > 0 ? (
+            <div style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '300px' }}>
+              <ResponsiveContainer width="100%" height={300}>
+                <PieChart>
+                  <Pie
+                    data={data.filter(item => item && (item.status || item.method))}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={(entry) => {
+                      const status = entry?.status || entry?.payload?.status || 'Unknown';
+                      const percentage = entry?.percentage || entry?.payload?.percentage || 0;
+                      const percent = parseFloat(percentage) || 0;
+                      return percent > 2 ? `${status}: ${percent.toFixed(1)}%` : '';
+                    }}
+                    outerRadius={100}
+                    innerRadius={40}
+                    fill="#8884d8"
+                    dataKey="count"
+                    paddingAngle={2}
+                  >
+                    {data.filter(item => item && (item.status || item.method)).map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip 
+                    formatter={(value, name, props) => {
+                      const { status, percentage } = props.payload;
+                      return [
+                        `${value} (${parseFloat(percentage || 0).toFixed(2)}%)`,
+                        status
+                      ];
+                    }}
+                  />
+                  <Legend 
+                    formatter={(value, entry) => {
+                      const status = entry.payload?.status || entry.payload?.method || 'Unknown';
+                      const percent = parseFloat(entry.payload?.percentage || 0);
+                      return `${status} (${percent.toFixed(1)}%)`;
+                    }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
+              No data available
+            </div>
+          )}
         </div>
       </div>
     </div>

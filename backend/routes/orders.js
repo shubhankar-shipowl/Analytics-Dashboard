@@ -83,14 +83,21 @@ router.get('/', async (req, res) => {
     } = req.query;
 
     const filters = {};
-    if (startDate) filters.startDate = startDate;
-    if (endDate) filters.endDate = endDate;
+    if (startDate) {
+      filters.startDate = startDate;
+      logger.info(`📅 Orders API - Received startDate filter: ${startDate}`);
+    }
+    if (endDate) {
+      filters.endDate = endDate;
+      logger.info(`📅 Orders API - Received endDate filter: ${endDate}`);
+    }
     if (product) filters.product = product;
     if (products) filters.products = products; // Multiple products (comma-separated)
     if (pincode) filters.pincode = pincode;
     if (status) filters.status = status;
     if (order_id) filters.order_id = order_id;
 
+    logger.info(`📊 Orders API - Fetching orders with filters:`, JSON.stringify(filters, null, 2));
     const orders = await Order.find(filters, { limit, offset });
     const total = await Order.count(filters);
 
