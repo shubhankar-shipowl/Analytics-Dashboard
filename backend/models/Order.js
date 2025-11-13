@@ -3,17 +3,41 @@ const logger = require('../utils/logger');
 
 class Order {
   constructor(data) {
+    // All 34 fields from Excel file
+    this.order_account = data.order_account || null;
     this.order_id = data.order_id || null;
+    this.channel_order_number = data.channel_order_number || null;
+    this.channel_order_date = data.channel_order_date || null;
+    this.waybill_number = data.waybill_number || null;
+    this.pre_generated_waybill = data.pre_generated_waybill || null;
     this.order_date = data.order_date || null;
-    this.order_status = data.order_status || data.status || null;
-    this.product_name = data.product_name || data.product || null;
-    this.sku = data.sku || null;
-    this.pincode = data.pincode || null;
+    this.ref_invoice_number = data.ref_invoice_number || null;
+    this.payment_method = data.payment_method || data.mode || null;
+    this.express = data.express || null;
+    this.pickup_warehouse = data.pickup_warehouse || null;
+    this.consignee_name = data.consignee_name || null;
+    this.consignee_contact = data.consignee_contact || null;
+    this.alternate_number = data.alternate_number || null;
+    this.address = data.address || null;
     this.city = data.city || null;
-    this.order_value = data.order_value || data.amount || null;
-    this.payment_method = data.payment_method || null;
-    this.fulfillment_partner = data.fulfillment_partner || null;
+    this.state = data.state || null;
+    this.pincode = data.pincode || null;
+    this.product_name = data.product_name || data.product || null;
     this.quantity = data.quantity || 1;
+    this.product_value = data.product_value || null;
+    this.sku = data.sku || null;
+    this.order_value = data.order_value || data.amount || null;
+    this.extra_charges = data.extra_charges || null;
+    this.total_amount = data.total_amount || null;
+    this.cod_amount = data.cod_amount || null;
+    this.dimensions = data.dimensions || null;
+    this.weight = data.weight || null;
+    this.fulfillment_partner = data.fulfillment_partner || null;
+    this.order_status = data.order_status || data.status || null;
+    this.added_on = data.added_on || null;
+    this.delivered_date = data.delivered_date || null;
+    this.rts_date = data.rts_date || null;
+    this.client_order_id = data.client_order_id || null;
   }
 
   // Create a new order
@@ -21,22 +45,21 @@ class Order {
     try {
       const order = new Order(orderData);
       const sql = `INSERT INTO orders (
-        order_id, order_date, order_status, product_name, sku, 
-        pincode, city, order_value, payment_method, fulfillment_partner, quantity
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+        order_account, order_id, channel_order_number, channel_order_date, waybill_number,
+        pre_generated_waybill, order_date, ref_invoice_number, payment_method, express,
+        pickup_warehouse, consignee_name, consignee_contact, alternate_number, address,
+        city, state, pincode, product_name, quantity, product_value, sku, order_value,
+        extra_charges, total_amount, cod_amount, dimensions, weight, fulfillment_partner,
+        order_status, added_on, delivered_date, rts_date, client_order_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
       const result = await query(sql, [
-        order.order_id,
-        order.order_date,
-        order.order_status,
-        order.product_name,
-        order.sku,
-        order.pincode,
-        order.city,
-        order.order_value,
-        order.payment_method,
-        order.fulfillment_partner,
-        order.quantity
+        order.order_account, order.order_id, order.channel_order_number, order.channel_order_date, order.waybill_number,
+        order.pre_generated_waybill, order.order_date, order.ref_invoice_number, order.payment_method, order.express,
+        order.pickup_warehouse, order.consignee_name, order.consignee_contact, order.alternate_number, order.address,
+        order.city, order.state, order.pincode, order.product_name, order.quantity, order.product_value, order.sku, order.order_value,
+        order.extra_charges, order.total_amount, order.cod_amount, order.dimensions, order.weight, order.fulfillment_partner,
+        order.order_status, order.added_on, order.delivered_date, order.rts_date, order.client_order_id
       ]);
 
       // For INSERT queries, mysql2 returns result with insertId
@@ -58,26 +81,26 @@ class Order {
 
       // Optimize: Use INSERT IGNORE or ON DUPLICATE KEY UPDATE for better performance
       // For now, use standard INSERT with optimized batch size
+      // Include all 34 fields from Excel file
       const sql = `INSERT INTO orders (
-        order_id, order_date, order_status, product_name, sku, 
-        pincode, city, order_value, payment_method, fulfillment_partner, quantity
+        order_account, order_id, channel_order_number, channel_order_date, waybill_number,
+        pre_generated_waybill, order_date, ref_invoice_number, payment_method, express,
+        pickup_warehouse, consignee_name, consignee_contact, alternate_number, address,
+        city, state, pincode, product_name, quantity, product_value, sku, order_value,
+        extra_charges, total_amount, cod_amount, dimensions, weight, fulfillment_partner,
+        order_status, added_on, delivered_date, rts_date, client_order_id
       ) VALUES ?`;
 
       // Pre-process all orders at once for better performance
       const values = ordersData.map(order => {
         const o = new Order(order);
         return [
-          o.order_id || null,
-          o.order_date || null,
-          o.order_status || null,
-          o.product_name || null,
-          o.sku || null,
-          o.pincode || null,
-          o.city || null,
-          o.order_value || null,
-          o.payment_method || null,
-          o.fulfillment_partner || null,
-          o.quantity || 1
+          o.order_account || null, o.order_id || null, o.channel_order_number || null, o.channel_order_date || null, o.waybill_number || null,
+          o.pre_generated_waybill || null, o.order_date || null, o.ref_invoice_number || null, o.payment_method || null, o.express || null,
+          o.pickup_warehouse || null, o.consignee_name || null, o.consignee_contact || null, o.alternate_number || null, o.address || null,
+          o.city || null, o.state || null, o.pincode || null, o.product_name || null, o.quantity || 1, o.product_value || null, o.sku || null, o.order_value || null,
+          o.extra_charges || null, o.total_amount || null, o.cod_amount || null, o.dimensions || null, o.weight || null, o.fulfillment_partner || null,
+          o.order_status || null, o.added_on || null, o.delivered_date || null, o.rts_date || null, o.client_order_id || null
         ];
       });
 

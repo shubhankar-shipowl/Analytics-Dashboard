@@ -170,7 +170,21 @@ const GoodBadPincodesChart = ({ data, filteredData = [] }) => {
     return name.substring(0, maxLength) + '...';
   };
 
-  const goodData = good.slice(0, 20).map(item => ({
+  // Sort good pincodes by order count (totalOrders) in descending order
+  const sortedGood = [...good].sort((a, b) => {
+    const aOrders = parseInt(a.totalOrders || a.actualOrders || 0, 10);
+    const bOrders = parseInt(b.totalOrders || b.actualOrders || 0, 10);
+    return bOrders - aOrders; // Descending order (highest first)
+  });
+
+  // Sort bad pincodes by order count (totalOrders) in descending order
+  const sortedBad = [...bad].sort((a, b) => {
+    const aOrders = parseInt(a.totalOrders || a.actualOrders || 0, 10);
+    const bOrders = parseInt(b.totalOrders || b.actualOrders || 0, 10);
+    return bOrders - aOrders; // Descending order (highest first)
+  });
+
+  const goodData = sortedGood.slice(0, 20).map(item => ({
     name: `${item.pincode}`,
     fullName: `${item.product} - ${item.pincode}`,
     product: item.product,
@@ -178,10 +192,10 @@ const GoodBadPincodesChart = ({ data, filteredData = [] }) => {
     pincode: item.pincode,
     ratio: item.ratio,
     deliveredCount: item.deliveredCount,
-    totalOrders: item.totalOrders
+    totalOrders: item.totalOrders || item.actualOrders || 0
   }));
 
-  const badData = bad.slice(0, 20).map(item => ({
+  const badData = sortedBad.slice(0, 20).map(item => ({
     name: `${item.pincode}`,
     fullName: `${item.product} - ${item.pincode}`,
     product: item.product,
@@ -189,7 +203,7 @@ const GoodBadPincodesChart = ({ data, filteredData = [] }) => {
     pincode: item.pincode,
     ratio: item.ratio,
     deliveredCount: item.deliveredCount,
-    totalOrders: item.totalOrders
+    totalOrders: item.totalOrders || item.actualOrders || 0
   }));
 
   return (

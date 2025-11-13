@@ -325,12 +325,37 @@ router.get('/order-status', async (req, res) => {
     const results = await query(sql, params);
     
     // Calculate total and percentages
-    const total = results && Array.isArray(results) ? results.reduce((sum, item) => sum + (item.count || 0), 0) : 0;
-    const data = results && Array.isArray(results) ? results.map(item => ({
-      status: item.status || 'Unknown',
-      count: item.count || 0,
-      percentage: total > 0 ? parseFloat(((item.count / total) * 100).toFixed(2)) : 0
-    })) : [];
+    // Ensure count is parsed as integer
+    const total = results && Array.isArray(results) 
+      ? results.reduce((sum, item) => {
+          const count = parseInt(item.count || 0, 10);
+          return sum + (isNaN(count) ? 0 : count);
+        }, 0) 
+      : 0;
+    
+    const data = results && Array.isArray(results) 
+      ? results
+          .filter(item => item && item.status && String(item.status).trim() !== '') // Filter out null/empty statuses
+          .map(item => {
+            const count = parseInt(item.count || 0, 10);
+            const status = String(item.status || 'Unknown').trim();
+            const percentage = total > 0 && !isNaN(count) 
+              ? parseFloat(((count / total) * 100).toFixed(2)) 
+              : 0;
+            
+            return {
+              status: status,
+              count: isNaN(count) ? 0 : count,
+              percentage: percentage
+            };
+          })
+          .filter(item => item.count > 0) // Only include statuses with count > 0
+      : [];
+    
+    logger.info(`Order status distribution: Total=${total}, Statuses=${data.length}`);
+    if (data.length === 0 && total > 0) {
+      logger.warn('⚠️ Order status data is empty but total > 0. Check data structure.');
+    }
 
     res.json({
       success: true,
@@ -659,29 +684,56 @@ router.get('/trends', async (req, res) => {
       params.push(pincode);
     }
 
-    const selectField = view === 'revenue' 
-      ? 'SUM(order_value) as value' 
-      : 'COUNT(*) as value';
-
+    // Get both orders count and revenue for each date
     const sql = `
       SELECT 
         DATE(order_date) as date,
-        ${selectField}
+        COUNT(*) as orders,
+        SUM(order_value) as revenue
       FROM orders 
       ${whereClause}
       GROUP BY DATE(order_date)
       ORDER BY date ASC
     `;
 
+    logger.info(`Trends query - whereClause: ${whereClause}, params: ${JSON.stringify(params)}`);
     const results = await query(sql, params);
+    logger.info(`Trends query returned ${results && Array.isArray(results) ? results.length : 0} rows`);
 
-    const data = results && Array.isArray(results) ? results.map(item => ({
-      date: item.date || null,
-      value: (() => {
-        const valueNum = parseFloat(item.value) || 0;
-        return parseFloat(valueNum.toFixed(2));
-      })()
-    })) : [];
+    const data = results && Array.isArray(results) ? results.map(item => {
+      // Format date as YYYY-MM-DD string (avoid UTC conversion issues)
+      let dateStr = null;
+      if (item.date) {
+        if (item.date instanceof Date) {
+          // If it's a Date object, format it as YYYY-MM-DD
+          const year = item.date.getFullYear();
+          const month = String(item.date.getMonth() + 1).padStart(2, '0');
+          const day = String(item.date.getDate()).padStart(2, '0');
+          dateStr = `${year}-${month}-${day}`;
+        } else if (typeof item.date === 'string') {
+          // If it's already a string, use it (should be YYYY-MM-DD from DATE() function)
+          dateStr = item.date.split('T')[0]; // Remove time part if present
+        } else {
+          dateStr = String(item.date);
+        }
+      }
+
+      const orders = parseInt(item.orders || 0, 10);
+      const revenue = parseFloat(item.revenue || 0);
+      
+      logger.debug(`Trend data point: date=${dateStr}, orders=${orders}, revenue=${revenue}`);
+
+      return {
+        date: dateStr,
+        orders: orders,
+        revenue: revenue
+      };
+    }) : [];
+
+    logger.info(`Trends response: ${data.length} data points`);
+    if (data.length === 0) {
+      logger.warn('⚠️ No trend data found. Check date filters and database records.');
+    }
 
     res.json({
       success: true,
@@ -848,13 +900,17 @@ router.get('/delivery-ratio', async (req, res) => {
 });
 
 // Get Good and Bad Pincodes by Product
-// Good Pincode: delivery ratio > 60%
-// Bad Pincode: delivery ratio < 20%
+// New logic:
+// 1. Actual orders = total orders - cancelled orders (for each product-pincode)
+// 2. Calculate median of actual orders per product (across all pincodes)
+// 3. Only consider pincodes where actual orders > median for that product
+// 4. If delivery ratio > 60%, mark as good pincode
+// Bad Pincode: delivery ratio < 20% (after median filter)
 /**
  * @swagger
  * /analytics/good-bad-pincodes:
  *   get:
- *     summary: Get good and bad pincodes by product (delivery ratio > 60% = good, < 20% = bad)
+ *     summary: Get good and bad pincodes by product (actual orders > median, then delivery ratio > 60% = good, < 20% = bad)
  *     tags: [Analytics]
  *     parameters:
  *       - $ref: '#/components/parameters/startDate'
@@ -938,75 +994,162 @@ router.get('/good-bad-pincodes', async (req, res) => {
       }
     }
 
-    // Actual orders = booked + delivered + dispatched + in transit + lost + manifested + ndr + picked + pickup pending + rto + rto-dispatched + rto-it + rto-pending + rts
-    // Delivery ratio = delivered / actual orders
-    // Filter: Only include pincodes where actualOrders > (actualOrders + deliveredOrders) / 2
-    // This simplifies to: actualOrders > deliveredOrders
+    // New logic:
+    // 1. Actual orders = total orders - cancelled orders (for each product-pincode)
+    // 2. Calculate median of actual orders per product (across all pincodes)
+    // 3. Only consider pincodes where actual orders > median for that product
+    // 4. If delivery ratio > 60%, mark as good pincode
     const sql = `
       SELECT 
         product_name as product,
         pincode,
-        COUNT(*) as actualOrders,
-        SUM(CASE WHEN LOWER(TRIM(order_status)) = 'delivered' THEN 1 ELSE 0 END) as deliveredCount,
-        CASE 
-          WHEN COUNT(*) > 0 
-          THEN (SUM(CASE WHEN LOWER(TRIM(order_status)) = 'delivered' THEN 1 ELSE 0 END) * 100.0 / COUNT(*))
-          ELSE 0
-        END as ratio
+        COUNT(*) as totalOrders,
+        SUM(CASE WHEN LOWER(TRIM(order_status)) = 'cancelled' OR LOWER(TRIM(order_status)) LIKE '%cancel%' THEN 1 ELSE 0 END) as cancelledOrders,
+        SUM(CASE WHEN LOWER(TRIM(order_status)) = 'delivered' THEN 1 ELSE 0 END) as deliveredCount
       FROM orders 
       ${whereClause}
       AND pincode IS NOT NULL
+      AND TRIM(pincode) != ''
+      AND LOWER(TRIM(pincode)) != 'unknown'
       AND product_name IS NOT NULL
-      AND (
-        LOWER(TRIM(order_status)) = 'booked' OR
-        LOWER(TRIM(order_status)) = 'delivered' OR
-        LOWER(TRIM(order_status)) = 'dispatched' OR
-        LOWER(TRIM(order_status)) LIKE '%in transit%' OR
-        LOWER(TRIM(order_status)) LIKE '%in-transit%' OR
-        LOWER(TRIM(order_status)) = 'intransit' OR
-        LOWER(TRIM(order_status)) = 'lost' OR
-        LOWER(TRIM(order_status)) = 'manifested' OR
-        LOWER(TRIM(order_status)) = 'ndr' OR
-        LOWER(TRIM(order_status)) = 'picked' OR
-        LOWER(TRIM(order_status)) LIKE '%pickup pending%' OR
-        LOWER(TRIM(order_status)) LIKE '%pickup-pending%' OR
-        LOWER(TRIM(order_status)) = 'pickuppending' OR
-        LOWER(TRIM(order_status)) = 'rto' OR
-        LOWER(TRIM(order_status)) LIKE '%rto-dispatched%' OR
-        LOWER(TRIM(order_status)) LIKE '%rto dispatched%' OR
-        LOWER(TRIM(order_status)) LIKE '%rto-it%' OR
-        LOWER(TRIM(order_status)) LIKE '%rto it%' OR
-        LOWER(TRIM(order_status)) LIKE '%rto pending%' OR
-        LOWER(TRIM(order_status)) LIKE '%rto-pending%' OR
-        LOWER(TRIM(order_status)) = 'rts'
-      )
+      AND TRIM(product_name) != ''
+      AND LOWER(TRIM(product_name)) != 'unknown'
       GROUP BY product_name, pincode
       HAVING COUNT(*) > 0
-        AND COUNT(*) > SUM(CASE WHEN LOWER(TRIM(order_status)) = 'delivered' THEN 1 ELSE 0 END)
     `;
 
+    logger.info(`Executing Good/Bad Pincodes query with ${params.length} parameters`);
+    logger.debug(`SQL: ${sql}`);
+    logger.debug(`Params: ${JSON.stringify(params)}`);
+    
     const results = await query(sql, params);
+    logger.info(`Good/Bad Pincodes query returned ${results ? results.length : 0} product-pincode combinations`);
+    
+    if (!results || results.length === 0) {
+      logger.warn(`⚠️ No product-pincode combinations found. This could mean:`);
+      logger.warn(`  1. No orders in database`);
+      logger.warn(`  2. All orders have NULL pincode or product_name`);
+      logger.warn(`  3. Date filters are too restrictive`);
+      
+      // Try a simple count query to see if there's any data at all
+      const countSql = `SELECT COUNT(*) as total FROM orders ${whereClause}`;
+      const countResult = await query(countSql, params);
+      const totalOrders = countResult && countResult[0] ? countResult[0].total : 0;
+      logger.warn(`   Total orders matching filters: ${totalOrders}`);
+      
+      const pincodeCountSql = `SELECT COUNT(DISTINCT pincode) as pincodes, COUNT(DISTINCT product_name) as products FROM orders ${whereClause} AND pincode IS NOT NULL AND product_name IS NOT NULL`;
+      const pincodeCountResult = await query(pincodeCountSql, params);
+      if (pincodeCountResult && pincodeCountResult[0]) {
+        logger.warn(`   Distinct pincodes: ${pincodeCountResult[0].pincodes}, Distinct products: ${pincodeCountResult[0].products}`);
+      }
+    }
 
-    const allPincodes = results && Array.isArray(results) ? results.map(item => ({
-      product: item.product || 'Unknown',
-      pincode: item.pincode || 'Unknown',
-      totalOrders: item.actualOrders || 0, // Keep for backward compatibility
-      actualOrders: item.actualOrders || 0,
-      deliveredCount: item.deliveredCount || 0,
-      ratio: (() => {
-        const ratioNum = parseFloat(item.ratio) || 0;
-        return parseFloat(ratioNum.toFixed(2));
-      })()
-    })) : [];
+    // Process results: calculate actual orders and delivery ratio
+    const allPincodes = results && Array.isArray(results) ? results.map(item => {
+      const totalOrders = parseInt(item.totalOrders || 0, 10);
+      const cancelledOrders = parseInt(item.cancelledOrders || 0, 10);
+      const deliveredCount = parseInt(item.deliveredCount || 0, 10);
+      const actualOrders = totalOrders - cancelledOrders; // Actual orders = total - cancelled
+      const ratio = actualOrders > 0 
+        ? parseFloat(((deliveredCount / actualOrders) * 100).toFixed(2))
+        : 0;
+
+      // Filter out invalid pincodes and products
+      const product = String(item.product || '').trim();
+      const pincode = String(item.pincode || '').trim();
+      
+      if (!product || product === '' || product.toLowerCase() === 'unknown') {
+        return null;
+      }
+      if (!pincode || pincode === '' || pincode.toLowerCase() === 'unknown') {
+        return null;
+      }
+
+      return {
+        product: product,
+        pincode: pincode,
+        totalOrders: totalOrders,
+        cancelledOrders: cancelledOrders,
+        actualOrders: actualOrders,
+        deliveredCount: deliveredCount,
+        ratio: ratio
+      };
+    }).filter(item => item !== null) : []; // Remove null entries (invalid pincodes/products)
+
+    logger.info(`Processed ${allPincodes.length} valid pincodes (after filtering invalid). Sample: ${JSON.stringify(allPincodes.slice(0, 3))}`);
+
+    // Calculate median of actual orders per product
+    const productMedians = {};
+    const productPincodes = {};
+    
+    // Group by product
+    allPincodes.forEach(item => {
+      if (!productPincodes[item.product]) {
+        productPincodes[item.product] = [];
+      }
+      productPincodes[item.product].push(item.actualOrders);
+    });
+
+    // Calculate median for each product
+    Object.keys(productPincodes).forEach(product => {
+      const orders = productPincodes[product].filter(o => o > 0).sort((a, b) => a - b);
+      if (orders.length > 0) {
+        const mid = Math.floor(orders.length / 2);
+        productMedians[product] = orders.length % 2 === 0
+          ? (orders[mid - 1] + orders[mid]) / 2
+          : orders[mid];
+        logger.info(`Product: ${product}, Median actual orders: ${productMedians[product]}, Total pincodes: ${orders.length}, Orders: [${orders.slice(0, 10).join(', ')}${orders.length > 10 ? '...' : ''}]`);
+      } else {
+        productMedians[product] = 0;
+        logger.warn(`Product: ${product} has no pincodes with actual orders > 0`);
+      }
+    });
+
+    // Filter: Only include pincodes where actual orders > median for that product
+    // If median is 0, include all pincodes with actualOrders > 0
+    const filteredPincodes = allPincodes.filter(item => {
+      const median = productMedians[item.product] || 0;
+      // If median is 0, include all pincodes with actual orders > 0
+      // Otherwise, include only those above median
+      const passes = median === 0 ? item.actualOrders > 0 : item.actualOrders > median;
+      if (passes && item.ratio > 60) {
+        logger.debug(`✅ Good candidate: Pincode ${item.pincode} (${item.product}): actualOrders=${item.actualOrders}, median=${median}, ratio=${item.ratio}%`);
+      }
+      return passes;
+    });
+
+    logger.info(`Good/Bad Pincodes: Total=${allPincodes.length}, After median filter=${filteredPincodes.length}, Good=${filteredPincodes.filter(i => i.ratio > 60).length}, Bad=${filteredPincodes.filter(i => i.ratio < 20).length}`);
+    
+    // Debug: Log some sample data if no results after filtering
+    if (filteredPincodes.length === 0 && allPincodes.length > 0) {
+      logger.warn(`⚠️ Median filter removed all pincodes. Total before filter: ${allPincodes.length}`);
+      logger.warn(`⚠️ Sample data (first 10): ${JSON.stringify(allPincodes.slice(0, 10).map(p => ({ 
+        product: p.product, 
+        pincode: p.pincode, 
+        actualOrders: p.actualOrders, 
+        ratio: p.ratio.toFixed(2),
+        median: productMedians[p.product] || 0
+      })))}`);
+      logger.warn(`⚠️ Product medians: ${JSON.stringify(productMedians)}`);
+      
+      // Show how many would pass if we used >= instead of >
+      const withGreaterEqual = allPincodes.filter(item => {
+        const median = productMedians[item.product] || 0;
+        return median === 0 ? item.actualOrders > 0 : item.actualOrders >= median;
+      });
+      logger.warn(`⚠️ If using >= median: ${withGreaterEqual.length} pincodes would pass`);
+    }
 
     // Separate into good (> 60%) and bad (< 20%)
-    const good = allPincodes
+    const good = filteredPincodes
       .filter(item => item.ratio > 60)
       .sort((a, b) => b.ratio - a.ratio);
 
-    const bad = allPincodes
+    const bad = filteredPincodes
       .filter(item => item.ratio < 20)
       .sort((a, b) => a.ratio - b.ratio);
+    
+    logger.info(`Final results: Good=${good.length}, Bad=${bad.length}`);
 
     res.json({
       success: true,
@@ -1024,7 +1167,7 @@ router.get('/good-bad-pincodes', async (req, res) => {
 // Get Top 10 NDR by Pincode (by absolute NDR count)
 router.get('/top-ndr-cities', async (req, res) => {
   try {
-    const { startDate, endDate, product, products, limit = 10 } = req.query;
+    const { startDate, endDate, product, products, pincode, limit = 10 } = req.query;
 
     let whereClause = 'WHERE 1=1';
     const params = [];
@@ -1053,15 +1196,20 @@ router.get('/top-ndr-cities', async (req, res) => {
         params.push(...productList);
       }
     }
-    // Note: pincode filter is removed as we're grouping by pincode
+    // Handle pincode filter - if a specific pincode is selected, show only that pincode's data
+    if (pincode && pincode !== 'All' && pincode !== '') {
+      whereClause += ' AND pincode = ?';
+      params.push(pincode);
+    }
 
     // Get Top Pincodes by absolute NDR count
+    // Improved NDR status matching to handle variations like "NDR", "Ndr", "ndr", etc.
     const sql = `
       SELECT 
         pincode,
         COUNT(*) as totalOrders,
         SUM(CASE WHEN LOWER(TRIM(order_status)) = 'cancelled' OR LOWER(TRIM(order_status)) LIKE '%cancel%' THEN 1 ELSE 0 END) as cancelledOrders,
-        SUM(CASE WHEN LOWER(TRIM(order_status)) = 'ndr' THEN 1 ELSE 0 END) as ndrCount,
+        SUM(CASE WHEN LOWER(TRIM(order_status)) = 'ndr' OR LOWER(TRIM(order_status)) LIKE '%ndr%' THEN 1 ELSE 0 END) as ndrCount,
         (
           COUNT(*) - 
           SUM(CASE WHEN LOWER(TRIM(order_status)) = 'cancelled' OR LOWER(TRIM(order_status)) LIKE '%cancel%' THEN 1 ELSE 0 END)
@@ -1072,7 +1220,7 @@ router.get('/top-ndr-cities', async (req, res) => {
             SUM(CASE WHEN LOWER(TRIM(order_status)) = 'cancelled' OR LOWER(TRIM(order_status)) LIKE '%cancel%' THEN 1 ELSE 0 END)
           ) > 0 
           THEN (
-            SUM(CASE WHEN LOWER(TRIM(order_status)) = 'ndr' THEN 1 ELSE 0 END) * 100.0 / 
+            SUM(CASE WHEN LOWER(TRIM(order_status)) = 'ndr' OR LOWER(TRIM(order_status)) LIKE '%ndr%' THEN 1 ELSE 0 END) * 100.0 / 
             (
               COUNT(*) - 
               SUM(CASE WHEN LOWER(TRIM(order_status)) = 'cancelled' OR LOWER(TRIM(order_status)) LIKE '%cancel%' THEN 1 ELSE 0 END)
@@ -1083,8 +1231,9 @@ router.get('/top-ndr-cities', async (req, res) => {
       FROM orders 
       ${whereClause}
       AND pincode IS NOT NULL
+      AND pincode != ''
       GROUP BY pincode
-      HAVING SUM(CASE WHEN LOWER(TRIM(order_status)) = 'ndr' THEN 1 ELSE 0 END) > 0
+      HAVING SUM(CASE WHEN LOWER(TRIM(order_status)) = 'ndr' OR LOWER(TRIM(order_status)) LIKE '%ndr%' THEN 1 ELSE 0 END) > 0
       ORDER BY ndrCount DESC
       LIMIT ?
     `;

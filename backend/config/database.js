@@ -28,8 +28,7 @@ const connectionConfig = {
   keepAliveInitialDelay: 0,
   connectTimeout: 60000, // 60 seconds
   // Optimize: Add connection reuse settings
-  acquireTimeout: 60000,
-  timeout: 60000,
+  // Removed acquireTimeout and timeout - these are pool options, not connection options
   // SSL configuration for remote connections
   ssl: process.env.DB_SSL === 'true' ? {
     rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false'

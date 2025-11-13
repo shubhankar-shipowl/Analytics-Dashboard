@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import './Filters.css';
 
 const Filters = ({ 
@@ -21,6 +21,26 @@ const Filters = ({
   const [pincodeSearch, setPincodeSearch] = useState('');
   const [showProductDropdown, setShowProductDropdown] = useState(false);
   const [showPincodeDropdown, setShowPincodeDropdown] = useState(false);
+  const productDropdownRef = useRef(null);
+  
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (productDropdownRef.current && !productDropdownRef.current.contains(event.target)) {
+        const input = event.target.closest('.searchable-select');
+        if (!input) {
+          setShowProductDropdown(false);
+        }
+      }
+    };
+
+    if (showProductDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [showProductDropdown]);
 
   const filteredProducts = useMemo(() => {
     if (!productSearch) return products;
@@ -141,22 +161,38 @@ const Filters = ({
               setShowProductDropdown(true);
             }}
             onFocus={() => setShowProductDropdown(true)}
-            onBlur={() => setTimeout(() => setShowProductDropdown(false), 200)}
+            onBlur={(e) => {
+              // Don't close if clicking inside the dropdown
+              if (productDropdownRef.current && productDropdownRef.current.contains(e.relatedTarget)) {
+                return;
+              }
+              // Delay closing to allow checkbox clicks
+              setTimeout(() => {
+                if (!productDropdownRef.current || !productDropdownRef.current.contains(document.activeElement)) {
+                  setShowProductDropdown(false);
+                }
+              }, 200);
+            }}
           />
           {showProductDropdown && (
-            <div className="dropdown-list" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+            <div 
+              ref={productDropdownRef}
+              className="dropdown-list" 
+              style={{ maxHeight: '300px', overflowY: 'auto' }}
+              onMouseDown={(e) => e.preventDefault()} // Prevent blur when clicking inside
+            >
               <div 
                 className="dropdown-item"
                 onClick={() => {
                   onProductFilterChange([]);
                   setProductSearch('');
-                  setShowProductDropdown(false);
                 }}
                 style={{ 
                   fontWeight: 'bold',
                   borderBottom: '1px solid #e2e8f0',
                   paddingBottom: '8px',
-                  marginBottom: '4px'
+                  marginBottom: '4px',
+                  backgroundColor: '#fee2e2'
                 }}
               >
                 Clear All
@@ -169,36 +205,56 @@ const Filters = ({
                     className="dropdown-item"
                     onClick={(e) => {
                       e.stopPropagation();
+                      e.preventDefault();
                       const newFilter = isSelected
                         ? productFilter.filter(p => p !== product)
                         : [...(productFilter || []), product];
                       onProductFilterChange(newFilter);
-                      setProductSearch('');
+                      // Don't clear search or close dropdown - allow multiple selections
                     }}
+                    onMouseDown={(e) => e.preventDefault()} // Prevent input blur
                     style={{
                       display: 'flex',
                       alignItems: 'center',
                       gap: '8px',
                       cursor: 'pointer',
-                      background: isSelected ? '#f0f9ff' : 'white'
+                      background: isSelected ? '#f0f9ff' : 'white',
+                      borderLeft: isSelected ? '3px solid var(--primary-color)' : '3px solid transparent'
                     }}
                   >
                     <input
                       type="checkbox"
                       checked={isSelected}
-                      onChange={() => {}} // Handled by parent onClick
-                      onClick={(e) => e.stopPropagation()}
-                      style={{ cursor: 'pointer' }}
+                      readOnly
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        const newFilter = isSelected
+                          ? productFilter.filter(p => p !== product)
+                          : [...(productFilter || []), product];
+                        onProductFilterChange(newFilter);
+                      }}
+                      style={{ cursor: 'pointer', pointerEvents: 'auto' }}
                     />
                     <span style={{ flex: 1 }}>{product}</span>
                     {isSelected && (
-                      <span style={{ color: 'var(--primary-color)', fontSize: '0.9rem' }}>✓</span>
+                      <span style={{ color: 'var(--primary-color)', fontSize: '0.9rem', fontWeight: 'bold' }}>✓</span>
                     )}
                   </div>
                 );
               })}
               {filteredProducts.length === 0 && (
                 <div className="dropdown-item">No products found</div>
+              )}
+              {filteredProducts.length > 100 && (
+                <div className="dropdown-item" style={{ 
+                  fontSize: '0.85rem', 
+                  color: 'var(--text-secondary)', 
+                  fontStyle: 'italic',
+                  cursor: 'default'
+                }}>
+                  Showing first 100 results. Use search to filter.
+                </div>
               )}
             </div>
           )}

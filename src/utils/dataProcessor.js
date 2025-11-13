@@ -620,9 +620,21 @@ export const getDailyTrend = (data, viewType = 'orders') => {
   const dailyData = {};
   
   data.forEach(row => {
-    if (!row.order_date) return;
+    // Try multiple possible field names for order date
+    const orderDate = row.order_date || row['Order Date'] || row.orderDate || row.date;
+    if (!orderDate) return;
     
-    const date = row.order_date instanceof Date ? row.order_date : new Date(row.order_date);
+    let date;
+    if (orderDate instanceof Date) {
+      date = orderDate;
+    } else if (typeof orderDate === 'string') {
+      date = new Date(orderDate);
+    } else {
+      return;
+    }
+    
+    if (isNaN(date.getTime())) return;
+    
     const dateKey = date.toISOString().split('T')[0]; // YYYY-MM-DD format
     
     if (!dailyData[dateKey]) {
@@ -630,15 +642,24 @@ export const getDailyTrend = (data, viewType = 'orders') => {
     }
     
     dailyData[dateKey].orders++;
-    dailyData[dateKey].revenue += parseFloat(row.amount) || 0;
+    // Try multiple possible field names for order value/revenue
+    const orderValue = parseFloat(
+      row.order_value || 
+      row['Order Amount'] || 
+      row.orderValue || 
+      row.amount || 
+      row.revenue || 
+      0
+    );
+    dailyData[dateKey].revenue += isNaN(orderValue) ? 0 : orderValue;
   });
 
   return Object.values(dailyData)
     .sort((a, b) => new Date(a.date) - new Date(b.date))
     .map(item => ({
-      date: new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      date: item.date, // Keep as YYYY-MM-DD format to match backend
       orders: item.orders,
-      revenue: item.revenue
+      revenue: parseFloat(item.revenue.toFixed(2))
     }));
 };
 
@@ -772,9 +793,11 @@ export const getTopProductsByPincode = (data, pincode, limit = 10) => {
 };
 
 // Get Good and Bad Pincodes by Product
-// Good Pincode: delivery ratio > 60%
-// Bad Pincode: delivery ratio < 20%
-// Delivery ratio = delivered / (booked + delivered + dispatched + in transit + lost + manifested + ndr + picked + pickup pending + rto + rto-dispatched + rto-it + rto-pending + rts) * 100
+// New logic:
+// 1. Actual orders = total orders - cancelled orders (for each product-pincode)
+// 2. Calculate median of actual orders per product (across all pincodes)
+// 3. Only consider pincodes where actual orders > median for that product
+// 4. If delivery ratio > 60%, mark as good pincode
 export const getGoodBadPincodesByProduct = (data, productName = null) => {
   if (!data || data.length === 0) return { good: [], bad: [] };
 
@@ -789,15 +812,9 @@ export const getGoodBadPincodesByProduct = (data, productName = null) => {
 
   const pincodeStats = {};
   
+  // Count all orders (including cancelled) and separate by status
   filteredData.forEach(row => {
     const status = getStatus(row);
-    
-    // Only count valid order statuses for delivery ratio (actual orders)
-    // Actual orders = booked + delivered + dispatched + in transit + lost + manifested + ndr + picked + pickup pending + rto + rto-dispatched + rto-it + rto-pending + rts
-    if (!isCountedInDeliveryRatio(status)) {
-      return;
-    }
-    
     const pincode = String(row.pincode || row['Pincode'] || 'Unknown').trim();
     const product = String(row.product || row['Product Name'] || 'Unknown').trim();
     
@@ -807,14 +824,20 @@ export const getGoodBadPincodesByProduct = (data, productName = null) => {
       pincodeStats[key] = {
         product,
         pincode,
-        actualOrders: 0, // Renamed from totalOrders for clarity
-        deliveredCount: 0,
-        ratio: 0
+        totalOrders: 0, // All orders including cancelled
+        cancelledOrders: 0,
+        deliveredCount: 0
       };
     }
     
-    // Count all actual orders (using isCountedInDeliveryRatio)
-    pincodeStats[key].actualOrders++;
+    // Count all orders (total)
+    pincodeStats[key].totalOrders++;
+    
+    // Count cancelled orders
+    const statusLower = String(status).toLowerCase().trim();
+    if (statusLower === 'cancelled' || statusLower.includes('cancel')) {
+      pincodeStats[key].cancelledOrders++;
+    }
     
     // Count delivered orders
     if (isDeliveredStatus(status)) {
@@ -822,40 +845,70 @@ export const getGoodBadPincodesByProduct = (data, productName = null) => {
     }
   });
 
-  // Calculate ratio and filter by mean condition
-  // Only include pincodes where actualOrders > (actualOrders + deliveredOrders) / 2
-  // This simplifies to: actualOrders > deliveredOrders
-  const pincodesWithData = Object.values(pincodeStats)
-    .map(stat => {
-      const actualOrders = stat.actualOrders;
-      const deliveredOrders = stat.deliveredCount;
-      const mean = (actualOrders + deliveredOrders) / 2;
-      
-      // Filter: only include where actualOrders > mean
-      // This means actualOrders > (actualOrders + deliveredOrders) / 2
-      // Which simplifies to: actualOrders > deliveredOrders
-      if (actualOrders <= mean) {
-        return null; // Exclude this pincode
-      }
-      
-      const ratio = actualOrders > 0 
-        ? (deliveredOrders / actualOrders) * 100 
-        : 0;
-      
-      return {
-        ...stat,
-        totalOrders: actualOrders, // Keep for backward compatibility
-        ratio: parseFloat(ratio.toFixed(2))
-      };
-    })
-    .filter(item => item !== null && item.actualOrders > 0); // Only include pincodes that pass the filter
+  // Calculate actual orders and delivery ratio for each product-pincode
+  const allPincodes = Object.values(pincodeStats).map(stat => {
+    const actualOrders = stat.totalOrders - stat.cancelledOrders; // Actual = total - cancelled
+    const ratio = actualOrders > 0 
+      ? (stat.deliveredCount / actualOrders) * 100 
+      : 0;
+    
+    return {
+      ...stat,
+      actualOrders: actualOrders,
+      ratio: parseFloat(ratio.toFixed(2))
+    };
+  });
 
-  // Separate into good and bad
-  const good = pincodesWithData
+  // Calculate median of actual orders per product
+  const productMedians = {};
+  const productPincodes = {};
+  
+  // Group by product
+  allPincodes.forEach(item => {
+    if (!productPincodes[item.product]) {
+      productPincodes[item.product] = [];
+    }
+    productPincodes[item.product].push(item.actualOrders);
+  });
+
+  // Calculate median for each product
+  Object.keys(productPincodes).forEach(product => {
+    const orders = productPincodes[product].filter(o => o > 0).sort((a, b) => a - b);
+    if (orders.length > 0) {
+      const mid = Math.floor(orders.length / 2);
+      productMedians[product] = orders.length % 2 === 0
+        ? (orders[mid - 1] + orders[mid]) / 2
+        : orders[mid];
+      console.log(`📊 Product: ${product}, Median actual orders: ${productMedians[product]}, Total pincodes: ${orders.length}`);
+    } else {
+      productMedians[product] = 0;
+    }
+  });
+
+  // Filter: Only include pincodes where actual orders > median for that product
+  // If median is 0, include all pincodes with actualOrders > 0
+  const filteredPincodes = allPincodes.filter(item => {
+    const median = productMedians[item.product] || 0;
+    // If median is 0, include all pincodes with actual orders > 0
+    // Otherwise, include only those above median
+    const passes = median === 0 ? item.actualOrders > 0 : item.actualOrders > median;
+    if (passes && item.ratio > 60) {
+      console.log(`✅ Good candidate: Pincode ${item.pincode} (${item.product}): actualOrders=${item.actualOrders}, median=${median}, ratio=${item.ratio}%`);
+    }
+    return passes;
+  }).map(item => ({
+    ...item,
+    totalOrders: item.actualOrders // Keep for backward compatibility
+  }));
+
+  console.log(`📊 Good/Bad Pincodes: Total=${allPincodes.length}, After median filter=${filteredPincodes.length}, Good=${filteredPincodes.filter(i => i.ratio > 60).length}, Bad=${filteredPincodes.filter(i => i.ratio < 20).length}`);
+
+  // Separate into good (> 60%) and bad (< 20%)
+  const good = filteredPincodes
     .filter(item => item.ratio > 60)
     .sort((a, b) => b.ratio - a.ratio); // Sort by ratio descending
 
-  const bad = pincodesWithData
+  const bad = filteredPincodes
     .filter(item => item.ratio < 20)
     .sort((a, b) => a.ratio - b.ratio); // Sort by ratio ascending
 

@@ -4,96 +4,104 @@ const path = require('path');
 const Order = require('../models/Order');
 const logger = require('./logger');
 
-// Normalize column names to match database schema
+// Normalize column names to match database schema (all 34 Excel columns)
 const normalizeColumnName = (colName) => {
   if (!colName) return colName;
   const lower = colName.toLowerCase().trim();
   
-  // Order ID variations - prioritize exact matches
-  if (lower === 'orderid' || lower === 'order id') return 'order_id';
-  if ((lower.includes('order') && lower.includes('id')) || 
-      lower.includes('orderid') || 
-      lower.includes('order number') ||
-      lower.includes('ordernumber') ||
-      lower.includes('client order id')) return 'order_id';
-  
-  // Date variations - prioritize "Order Date"
-  if (lower === 'order date' || lower === 'orderdate') return 'order_date';
-  if (lower.includes('date') && !lower.includes('delivered') && !lower.includes('rts') && !lower.includes('added')) {
-    return 'order_date';
-  }
-  
-  // Amount/Revenue variations - prioritize "Order Amount" and "Total Amount"
-  if (lower === 'order amount' || lower === 'total amount') return 'order_value';
-  if (lower.includes('amount') && !lower.includes('cod') && !lower.includes('extra')) {
-    return 'order_value';
-  }
-  if (lower.includes('price') || lower.includes('revenue') || 
-      lower.includes('value') || lower.includes('total') || 
-      lower.includes('order value') || lower.includes('order_value')) {
-    return 'order_value';
-  }
-  
-  // Status variations - exact match for "Status"
-  if (lower === 'status') return 'order_status';
-  if (lower.includes('status') || lower.includes('state') || 
-      lower.includes('order status') || lower.includes('orderstatus')) return 'order_status';
-  
-  // Payment method variations - "Mode" column contains COD/PPD
+  // Exact matches first (from Excel file analysis)
+  if (lower === 'order account') return 'order_account';
+  if (lower === 'orderid') return 'order_id';
+  if (lower === 'channel order number') return 'channel_order_number';
+  if (lower === 'channel order date') return 'channel_order_date';
+  if (lower === 'waybill number') return 'waybill_number';
+  if (lower === 'pre generated waybill') return 'pre_generated_waybill';
+  if (lower === 'order date') return 'order_date';
+  if (lower === 'ref./invoice #' || lower === 'ref/invoice #' || lower === 'ref invoice #') return 'ref_invoice_number';
   if (lower === 'mode') return 'payment_method';
-  if (lower.includes('payment') || lower.includes('cod') || 
-      lower.includes('ppd') || lower.includes('payment method') ||
-      lower.includes('paymentmethod') || lower.includes('payment type')) return 'payment_method';
-  
-  // City variations
+  if (lower === 'express') return 'express';
+  if (lower === 'pickup warehouse') return 'pickup_warehouse';
+  if (lower === 'consignee name') return 'consignee_name';
+  if (lower === 'consignee contact') return 'consignee_contact';
+  if (lower === 'alternate number') return 'alternate_number';
+  if (lower === 'address') return 'address';
   if (lower === 'city') return 'city';
-  if (lower.includes('city') || lower.includes('ship city') || 
-      lower.includes('delivery city')) return 'city';
+  if (lower === 'state') return 'state';
+  if (lower === 'pincode') return 'pincode';
+  if (lower === 'product name') return 'product_name';
+  if (lower === 'product qty') return 'quantity';
+  if (lower === 'product value') return 'product_value';
+  if (lower === 'sku') return 'sku';
+  if (lower === 'order amount') return 'order_value';
+  if (lower === 'extra charges') return 'extra_charges';
+  if (lower === 'total amount') return 'total_amount';
+  if (lower === 'cod amount') return 'cod_amount';
+  if (lower === 'dimensions') return 'dimensions';
+  if (lower === 'weight') return 'weight';
+  if (lower === 'fulfilled by') return 'fulfillment_partner';
+  if (lower === 'status') return 'order_status';
+  if (lower === 'added on') return 'added_on';
+  if (lower === 'delivered date') return 'delivered_date';
+  if (lower === 'rts date') return 'rts_date';
+  if (lower === 'client order id') return 'client_order_id';
   
-  // Pincode variations
+  // Fallback variations for compatibility
+  if (lower === 'order id' || lower === 'orderid') return 'order_id';
+  if ((lower.includes('order') && lower.includes('id')) && !lower.includes('client') && !lower.includes('channel')) {
+    return 'order_id';
+  }
+  
+  // Date variations
+  if (lower.includes('channel order date')) return 'channel_order_date';
+  if (lower.includes('delivered date') || lower === 'delivered date') return 'delivered_date';
+  if (lower.includes('rts date') || lower === 'rts date') return 'rts_date';
+  if (lower.includes('added on') || lower === 'added on') return 'added_on';
+  if (lower.includes('order date') && !lower.includes('channel')) return 'order_date';
+  
+  // Amount variations
+  if (lower.includes('order amount') && !lower.includes('cod') && !lower.includes('total')) return 'order_value';
+  if (lower.includes('product value')) return 'product_value';
+  if (lower.includes('total amount') && !lower.includes('cod')) return 'total_amount';
+  if (lower.includes('cod amount')) return 'cod_amount';
+  if (lower.includes('extra charges')) return 'extra_charges';
+  
+  // Status variations
+  if (lower === 'status' || lower.includes('order status')) return 'order_status';
+  
+  // Payment method
+  if (lower === 'mode' || lower.includes('payment method')) return 'payment_method';
+  
+  // Location variations
+  if (lower === 'city' || lower.includes('ship city')) return 'city';
+  if (lower === 'state') return 'state';
   if (lower === 'pincode' || lower === 'pin code') return 'pincode';
-  if (lower.includes('pin') || lower.includes('zip') || 
-      lower.includes('pincode') || lower.includes('pin code') ||
-      lower.includes('postal')) return 'pincode';
+  if (lower.includes('pin') || lower.includes('zip') || lower.includes('postal')) return 'pincode';
   
-  // Product variations - exact match for "Product Name"
-  if (lower === 'product name' || lower.trim() === 'product name') {
+  // Product variations
+  if (lower === 'product name' || (lower.includes('product') && lower.includes('name') && !lower.includes('qty'))) {
     return 'product_name';
   }
-  // Check for "Product Name" variations (must include both "product" AND "name")
-  if ((lower.includes('product') && lower.includes('name')) || lower.includes('productname')) {
-    // Exclude quantity, qty, amount, price, cost, etc.
-    if (!lower.includes('quantity') && !lower.includes('qty') && 
-        !lower.includes('amount') && !lower.includes('price') && 
-        !lower.includes('cost') && !lower.includes('value')) {
-      return 'product_name';
-    }
-  }
-  
-  // SKU - exact match
-  if (lower === 'sku') return 'sku';
-  if (lower.includes('sku')) return 'sku';
-  
-  // Quantity variations - prioritize "Product Qty"
   if (lower === 'product qty' || lower === 'product quantity') return 'quantity';
-  if (lower.includes('quantity') || lower.includes('qty') || 
-      lower.includes('qty.') || lower.includes('qty ')) {
-    return 'quantity';
-  }
+  if (lower.includes('quantity') || lower.includes('qty')) return 'quantity';
   
-  // Fulfillment partner variations - exact match for "Fulfilled By"
-  if (lower === 'fulfilled by' || lower === 'fulfilledby') return 'fulfillment_partner';
-  if (lower.includes('fulfilled by') || lower.includes('fulfilledby')) {
-    return 'fulfillment_partner';
-  }
-  if (lower.includes('fulfillment') || lower.includes('partner') || 
-      lower.includes('vendor') || lower.includes('fulfillment partner') ||
-      lower.includes('fulfillmentpartner') || lower.includes('carrier') ||
-      lower.includes('shipping partner') || lower.includes('fulfilled')) {
-    return 'fulfillment_partner';
-  }
+  // SKU
+  if (lower === 'sku') return 'sku';
   
-  return colName;
+  // Fulfillment
+  if (lower === 'fulfilled by' || lower.includes('fulfilled by')) return 'fulfillment_partner';
+  if (lower.includes('fulfillment') || lower.includes('partner')) return 'fulfillment_partner';
+  
+  // Other fields
+  if (lower.includes('waybill number')) return 'waybill_number';
+  if (lower.includes('channel order number')) return 'channel_order_number';
+  if (lower.includes('client order id')) return 'client_order_id';
+  if (lower.includes('consignee name')) return 'consignee_name';
+  if (lower.includes('consignee contact')) return 'consignee_contact';
+  if (lower.includes('pickup warehouse')) return 'pickup_warehouse';
+  if (lower.includes('ref') && lower.includes('invoice')) return 'ref_invoice_number';
+  
+  // Return original if no match (will be stored as-is or ignored)
+  return colName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
 };
 
 // Parse date from various formats
@@ -203,13 +211,23 @@ const importExcelFile = async (filePath, options = {}) => {
         const normalizedKey = normalizeColumnName(key);
         let value = row[key];
         
-        // Handle date fields
-        if (normalizedKey === 'order_date') {
+        // Handle date/datetime fields
+        if (normalizedKey === 'order_date' || 
+            normalizedKey === 'channel_order_date' || 
+            normalizedKey === 'added_on' || 
+            normalizedKey === 'delivered_date' || 
+            normalizedKey === 'rts_date') {
           value = parseDate(value);
         }
         
         // Handle numeric fields
-        if (normalizedKey === 'order_value' || normalizedKey === 'quantity') {
+        if (normalizedKey === 'order_value' || 
+            normalizedKey === 'quantity' || 
+            normalizedKey === 'product_value' ||
+            normalizedKey === 'extra_charges' ||
+            normalizedKey === 'total_amount' ||
+            normalizedKey === 'cod_amount' ||
+            normalizedKey === 'weight') {
           value = parseNumber(value);
         }
         
@@ -300,4 +318,5 @@ module.exports = {
   parseDate,
   parseNumber
 };
+
 

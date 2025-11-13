@@ -1,15 +1,22 @@
 :root {
-    /* Theme Colors */
-    --primary-color: #ff8b42;
-    --secondary-color: #ff8b42;
-    --accent-color: #ffd7a8;
-    --background-color: #fffdfc;
-    --text-primary: #2d3748;
-    --text-secondary: #4a5568;
-    --text-muted: #718096;
-    --border-color: #e2e8f0;
-    --error-color: #e53e3e;
-    --spinner-color: #f3f3f3;
+    /* ShipOwl Theme Colors - Orange Accent */
+    --primary-color: #ff8b42; /* Orange - ShipOwl Primary */
+    --secondary-color: #ff6b1a; /* Darker Orange */
+    --accent-color: #ffd7a8; /* Light Orange */
+    --success-color: #10b981; /* Green */
+    --warning-color: #f59e0b; /* Amber */
+    --error-color: #ef4444; /* Red */
+    --background-color: #fafafa; /* Light off-white like ShipOwl */
+    --chart-bg: #f8f8f8;
+    --card-bg: #ffffff;
+    --text-primary: #1e293b;
+    --text-secondary: #475569;
+    --text-muted: #64748b;
+    --border-color: #e5e7eb;
+    --spinner-color: #f3f4f6;
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
   }
 
 * {
@@ -34,27 +41,33 @@
   .app-header {
     background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
     color: white;
-    padding: 30px 20px;
-    text-align: center;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    padding: 24px 32px;
+    box-shadow: var(--shadow-md);
     position: sticky;
     top: 0;
     z-index: 100;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 16px;
   }
   
   .app-header h1 {
-    font-size: 2.2rem;
+    font-size: 1.75rem;
     font-weight: 700;
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
     letter-spacing: -0.5px;
+    margin: 0;
   }
   
   .app-container {
     display: flex;
     gap: 24px;
-    padding: 24px;
+    padding: 24px 32px;
     max-width: 1920px;
     margin: 0 auto;
+    background-color: var(--background-color);
+    min-height: calc(100vh - 80px);
   }
   
   .sidebar {

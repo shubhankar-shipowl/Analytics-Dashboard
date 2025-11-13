@@ -519,16 +519,29 @@ function App() {
         const deliveryRatio = await fetchDeliveryRatio(filters);
         if (deliveryRatio && Array.isArray(deliveryRatio) && deliveryRatio.length > 0) {
           // Backend returns array of partners with ratios
-          setDeliveryRatioByPartnerData(deliveryRatio);
+          // Ensure all numeric values are properly parsed
+          const formattedDeliveryRatio = deliveryRatio.map(item => ({
+            ...item,
+            totalOrders: parseInt(item.totalOrders || 0, 10),
+            deliveredCount: parseInt(item.deliveredCount || 0, 10),
+            ratio: parseFloat(item.ratio || 0)
+          }));
+          setDeliveryRatioByPartnerData(formattedDeliveryRatio);
           
-          // Calculate overall delivery ratio
-          const totalOrders = deliveryRatio.reduce((sum, item) => sum + (item.totalOrders || 0), 0);
-          const deliveredCount = deliveryRatio.reduce((sum, item) => sum + (item.deliveredCount || 0), 0);
+          // Calculate overall delivery ratio - ensure values are numbers, not strings
+          const totalOrders = formattedDeliveryRatio.reduce((sum, item) => {
+            const orders = parseInt(item.totalOrders || 0, 10);
+            return sum + (isNaN(orders) ? 0 : orders);
+          }, 0);
+          const deliveredCount = formattedDeliveryRatio.reduce((sum, item) => {
+            const delivered = parseInt(item.deliveredCount || 0, 10);
+            return sum + (isNaN(delivered) ? 0 : delivered);
+          }, 0);
           const overallRatio = totalOrders > 0 ? (deliveredCount / totalOrders) * 100 : 0;
           setDeliveryRatioData({ 
             ratio: parseFloat(overallRatio.toFixed(2)), 
-            deliveredCount, 
-            totalOrders 
+            deliveredCount: parseInt(deliveredCount, 10), 
+            totalOrders: parseInt(totalOrders, 10)
           });
         } else if (filteredData.length > 0) {
           const localDeliveryRatio = getDeliveryRatio(filteredData);
@@ -549,12 +562,34 @@ function App() {
           setFulfillmentPartnerData(getFulfillmentPartnerAnalysis(filteredData));
         }
 
-        // Fetch trends
-        const trends = await fetchTrends({ ...filters, view: trendViewType });
-        if (trends) {
-          setTrendData(trends);
-        } else if (filteredData.length > 0) {
-          setTrendData(getDailyTrend(filteredData, trendViewType));
+        // Fetch trends - ensure all filters are applied
+        const trendFilters = { 
+          ...filters, 
+          view: trendViewType 
+        };
+        console.log('📈 Fetching trends with filters:', trendFilters);
+        try {
+          const trends = await fetchTrends(trendFilters);
+          if (trends && Array.isArray(trends) && trends.length > 0) {
+            console.log('✅ Trends from backend:', trends.length, 'data points');
+            console.log('Sample trend data:', trends.slice(0, 3));
+            setTrendData(trends);
+          } else if (filteredData.length > 0) {
+            console.log('⚠️ No trends from backend, using local calculation');
+            setTrendData(getDailyTrend(filteredData, trendViewType));
+          } else {
+            console.log('⚠️ No trend data available');
+            setTrendData([]);
+          }
+        } catch (trendError) {
+          console.error('❌ Error fetching trends:', trendError);
+          // Fallback to local calculation if available
+          if (filteredData.length > 0) {
+            console.log('📊 Using local trend calculation as fallback');
+            setTrendData(getDailyTrend(filteredData, trendViewType));
+          } else {
+            setTrendData([]);
+          }
         }
 
         // Fetch top products
@@ -573,8 +608,12 @@ function App() {
           setTopCitiesData(getTopCities(filteredData, cityViewType, 10, citySortDirection));
         }
 
-        // Fetch top NDR cities
-        const topNDRCities = await fetchTopNDRCities({ ...filters, limit: 10 });
+        // Fetch top NDR cities (include pincode filter if selected)
+        const topNDRCitiesFilters = { ...filters, limit: 10 };
+        if (pincodeFilter !== 'All' && pincodeFilter !== '') {
+          topNDRCitiesFilters.pincode = pincodeFilter;
+        }
+        const topNDRCities = await fetchTopNDRCities(topNDRCitiesFilters);
         if (topNDRCities) {
           setTopNDRCitiesData(topNDRCities);
         } else if (filteredData.length > 0) {
@@ -654,7 +693,7 @@ function App() {
     };
 
     fetchAnalytics();
-  }, [filteredData, buildFilters, dateFilter, customStartDate, customEndDate, productFilter, pincodeFilter, trendViewType, productViewType, cityViewType, citySortDirection]);
+  }, [filteredData, buildFilters, dateFilter, customStartDate, customEndDate, productFilter, pincodeFilter, trendViewType, productViewType, cityViewType, citySortDirection, isUsingBackend]);
 
   // Get filtered data for extracting unique values (data is already date-filtered from backend)
   const dataForFilterOptions = React.useMemo(() => {

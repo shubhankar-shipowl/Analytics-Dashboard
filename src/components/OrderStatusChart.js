@@ -3,7 +3,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import * as XLSX from 'xlsx';
 import './Chart.css';
 
-const COLORS = ['#ff8b42', '#ffd7a8', '#FFBB28', '#FF8042', '#ff8b42', '#ffd7a8', '#fffdfc'];
+const COLORS = ['#ff8b42', '#ff6b1a', '#ffd7a8', '#FFBB28', '#FF8042', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#ec4899'];
 
 const OrderStatusChart = ({ data, deliveryRatio, deliveryRatioByPartner, filteredData = [] }) => {
   // Helper function to get status from row (handles multiple field name variations)
@@ -124,14 +124,14 @@ const OrderStatusChart = ({ data, deliveryRatio, deliveryRatioByPartner, filtere
                 marginBottom: '5px',
                 wordBreak: 'break-word'
               }}>
-                {deliveryRatio.ratio}%
+                {parseFloat(deliveryRatio.ratio || 0).toFixed(2)}%
               </div>
               <div style={{ 
                 color: 'var(--text-muted)',
                 fontSize: '0.85rem',
                 wordBreak: 'break-word'
               }}>
-                {deliveryRatio.deliveredCount.toLocaleString()} out of {deliveryRatio.totalOrders.toLocaleString()} orders
+                {parseInt(deliveryRatio.deliveredCount || 0, 10).toLocaleString('en-IN')} out of {parseInt(deliveryRatio.totalOrders || 0, 10).toLocaleString('en-IN')} orders
               </div>
             </div>
           )}
@@ -194,55 +194,145 @@ const OrderStatusChart = ({ data, deliveryRatio, deliveryRatioByPartner, filtere
         </div>
         <div className="chart-item">
           <h4>By Percentage</h4>
-          {data && data.length > 0 ? (
-            <div style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '300px' }}>
-              <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={data.filter(item => item && (item.status || item.method))}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={(entry) => {
-                      const status = entry?.status || entry?.payload?.status || 'Unknown';
-                      const percentage = entry?.percentage || entry?.payload?.percentage || 0;
-                      const percent = parseFloat(percentage) || 0;
-                      return percent > 2 ? `${status}: ${percent.toFixed(1)}%` : '';
-                    }}
-                    outerRadius={100}
-                    innerRadius={40}
-                    fill="#8884d8"
-                    dataKey="count"
-                    paddingAngle={2}
-                  >
-                    {data.filter(item => item && (item.status || item.method)).map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip 
-                    formatter={(value, name, props) => {
-                      const { status, percentage } = props.payload;
-                      return [
-                        `${value} (${parseFloat(percentage || 0).toFixed(2)}%)`,
-                        status
-                      ];
-                    }}
-                  />
-                  <Legend 
-                    formatter={(value, entry) => {
-                      const status = entry.payload?.status || entry.payload?.method || 'Unknown';
-                      const percent = parseFloat(entry.payload?.percentage || 0);
-                      return `${status} (${percent.toFixed(1)}%)`;
-                    }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          ) : (
-            <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
-              No data available
-            </div>
-          )}
+          {(() => {
+            // Filter and validate data
+            const validData = (data || [])
+              .filter(item => {
+                if (!item) return false;
+                const status = item.status || item.method;
+                const count = parseInt(item.count || 0, 10);
+                return status && String(status).trim() !== '' && count > 0;
+              })
+              .map(item => ({
+                status: String(item.status || item.method || 'Unknown').trim(),
+                count: parseInt(item.count || 0, 10),
+                percentage: parseFloat(item.percentage || 0)
+              }));
+            
+            if (!validData || validData.length === 0) {
+              return (
+                <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                  No data available
+                </div>
+              );
+            }
+            
+            return (
+              <div style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '300px' }}>
+                <ResponsiveContainer width="100%" height={400}>
+                  <PieChart>
+                    <Pie
+                      data={validData}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      outerRadius={120}
+                      innerRadius={50}
+                      fill="#8884d8"
+                      dataKey="count"
+                      paddingAngle={2}
+                      label={({ cx, cy, midAngle, innerRadius, outerRadius, percent, payload }) => {
+                        // Custom label positioning on chart segments
+                        const RADIAN = Math.PI / 180;
+                        const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+                        const x = cx + radius * Math.cos(-midAngle * RADIAN);
+                        const y = cy + radius * Math.sin(-midAngle * RADIAN);
+                        const percentage = parseFloat(percent * 100) || 0;
+                        const statusName = payload?.status || 'Unknown';
+                        const orderCount = parseInt(payload?.count || 0, 10);
+                        
+                        // Only show label if percentage is significant (> 1%) and count > 0
+                        if (percentage > 1 && orderCount > 0) {
+                          // For larger segments (> 5%), show status and percentage
+                          if (percentage > 5) {
+                            return (
+                              <text 
+                                x={x} 
+                                y={y} 
+                                fill="black" 
+                                textAnchor={x > cx ? 'start' : 'end'} 
+                                dominantBaseline="central"
+                                fontSize={12}
+                                fontWeight="bold"
+                                style={{ textShadow: '0 0 2px rgba(255,255,255,0.8)' }}
+                              >
+                                {statusName}
+                                <tspan x={x} dy="15" fontSize={11}>
+                                  {percentage.toFixed(1)}%
+                                </tspan>
+                              </text>
+                            );
+                          }
+                          // For smaller segments, just show percentage
+                          return (
+                            <text 
+                              x={x} 
+                              y={y} 
+                              fill="black" 
+                              textAnchor={x > cx ? 'start' : 'end'} 
+                              dominantBaseline="central"
+                              fontSize={11}
+                              fontWeight="bold"
+                              style={{ textShadow: '0 0 2px rgba(255,255,255,0.8)' }}
+                            >
+                              {percentage.toFixed(1)}%
+                            </text>
+                          );
+                        }
+                        return null;
+                      }}
+                    >
+                      {validData.map((entry, index) => (
+                        <Cell key={`cell-${index}-${entry.status}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip 
+                      formatter={(value, name, props) => {
+                        if (!props || !props.payload) {
+                          return [value, name];
+                        }
+                        const payload = props.payload;
+                        const status = payload?.status || 'Unknown';
+                        const percentage = payload?.percentage || 0;
+                        const count = parseInt(value || payload?.count || 0, 10);
+                        const percent = parseFloat(percentage || 0);
+                        return [
+                          `${count.toLocaleString('en-IN')} (${percent.toFixed(2)}%)`,
+                          status
+                        ];
+                      }}
+                      labelFormatter={(label) => {
+                        // Label is usually the status name
+                        return label || 'Status';
+                      }}
+                    />
+                    <Legend 
+                      formatter={(value, entry) => {
+                        if (!entry || !entry.payload) {
+                          // Fallback: try to find the data by value
+                          const dataItem = validData.find(item => item.status === value);
+                          if (dataItem) {
+                            return `${dataItem.status} (${parseFloat(dataItem.percentage || 0).toFixed(1)}%)`;
+                          }
+                          return value;
+                        }
+                        const payload = entry.payload;
+                        const status = payload?.status || payload?.method || value || 'Unknown';
+                        const percent = parseFloat(payload?.percentage || 0);
+                        const count = parseInt(payload?.count || 0, 10);
+                        
+                        // Only show in legend if count > 0
+                        if (count > 0) {
+                          return `${status} (${percent.toFixed(1)}%)`;
+                        }
+                        return '';
+                      }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            );
+          })()}
         </div>
       </div>
     </div>
