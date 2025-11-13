@@ -15,7 +15,8 @@ import {
     getTopProductsByPincode,
     getTopPincodeByDelivery,
     getTopNDRCities,
-    getGoodBadPincodesByProduct
+    getGoodBadPincodesByProduct,
+    getPaymentMethodDistribution
   } from './utils/dataProcessor';
 import { 
   loadData, 
@@ -23,6 +24,7 @@ import {
   refreshBackendCheck,
   getKPIs as fetchKPIs,
   getOrderStatus as fetchOrderStatus,
+  getPaymentMethods as fetchPaymentMethods,
   getFulfillmentPartners as fetchFulfillmentPartners,
   getTopProducts as fetchTopProducts,
   getTopCities as fetchTopCities,
@@ -42,6 +44,7 @@ import TopProductsChart from './components/TopProductsChart';
 import TopCitiesChart from './components/TopCitiesChart';
 import TopNDRCitiesChart from './components/TopNDRCitiesChart';
 import GoodBadPincodesChart from './components/GoodBadPincodesChart';
+import PaymentMethodChart from './components/PaymentMethodChart';
 
 function App() {
   const [data, setData] = useState([]);
@@ -86,6 +89,7 @@ function App() {
   const [topProductsByPincodeData, setTopProductsByPincodeData] = useState([]);
   const [topNDRCitiesData, setTopNDRCitiesData] = useState([]);
   const [goodBadPincodesData, setGoodBadPincodesData] = useState({ good: [], bad: [] });
+  const [paymentMethodData, setPaymentMethodData] = useState([]);
 
   // Helper function to format date as YYYY-MM-DD for SQL (using local time, not UTC)
   const formatDateForSQL = React.useCallback((date) => {
@@ -457,6 +461,10 @@ function App() {
         const localGoodBad = getGoodBadPincodesByProduct(filteredData, productFilter && productFilter.length > 0 ? productFilter[0] : null);
         console.log('✅ Good/Bad Pincodes from local (no backend):', { good: localGoodBad.good?.length || 0, bad: localGoodBad.bad?.length || 0 });
         setGoodBadPincodesData(localGoodBad);
+        
+        // Local payment method calculation
+        const localPaymentMethods = getPaymentMethodDistribution(filteredData);
+        setPaymentMethodData(localPaymentMethods);
         return;
       }
 
@@ -513,6 +521,19 @@ function App() {
           setOrderStatusData(getOrderStatusDistribution(filteredData));
         } else {
           setOrderStatusData([]);
+        }
+
+        // Fetch payment methods
+        try {
+          const paymentMethods = await fetchPaymentMethods(filters);
+          if (paymentMethods && Array.isArray(paymentMethods) && paymentMethods.length > 0) {
+            setPaymentMethodData(paymentMethods);
+          } else {
+            setPaymentMethodData([]);
+          }
+        } catch (error) {
+          console.error('Error fetching payment methods:', error);
+          setPaymentMethodData([]);
         }
 
         // Fetch delivery ratio
@@ -1040,6 +1061,10 @@ function App() {
             filteredData={filteredData}
           />
 
+          <PaymentMethodChart 
+            key={`payment-method-${filteredData.length}-${dateFilter}-${customStartDate}-${customEndDate}-${productFilter}-${pincodeFilter}`}
+            data={paymentMethodData} 
+          />
 
           <FulfillmentPartnerChart data={fulfillmentPartnerData} />
 

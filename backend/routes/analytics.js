@@ -122,34 +122,52 @@ router.get('/kpis', async (req, res) => {
     
     logger.debug(`KPI Calculation - Total Orders: ${totalOrders}, Filters: ${JSON.stringify({ startDate, endDate, product, pincode })}`);
 
-    // Total Revenue (only from valid order statuses)
+    // Total Revenue = Sum of total_amount column where status is 'delivered'
+    // Revenue = order amount where status is delivered
+    // Total Revenue = sum of all amounts from delivered orders
+    // Note: total_amount is DECIMAL(12, 2) in database
+    // IMPORTANT: Use total_amount, NOT order_value - they are different columns
     const revenueSql = `
+      SELECT SUM(total_amount) as total 
+      FROM orders 
+      ${whereClause} 
+      AND total_amount IS NOT NULL 
+      AND LOWER(TRIM(order_status)) = 'delivered'
+    `;
+    const revenueResult = await query(revenueSql, params);
+    // Convert to number - MySQL SUM() on DECIMAL(12, 2) returns DECIMAL which might be a string
+    // Ensure proper handling of DECIMAL type
+    const totalRevenue = revenueResult && revenueResult.length > 0 
+      ? parseFloat(revenueResult[0].total) || 0 
+      : 0;
+    
+    // Also get count of delivered orders for verification
+    const deliveredCountSql = `
+      SELECT COUNT(*) as count 
+      FROM orders 
+      ${whereClause} 
+      AND LOWER(TRIM(order_status)) = 'delivered'
+    `;
+    const deliveredCountResult = await query(deliveredCountSql, params);
+    const deliveredCount = deliveredCountResult && deliveredCountResult.length > 0 ? deliveredCountResult[0].count : 0;
+    
+    // Also verify with order_value to see the difference (for debugging)
+    const orderValueCheckSql = `
       SELECT SUM(order_value) as total 
       FROM orders 
       ${whereClause} 
       AND order_value IS NOT NULL 
-      AND (
-        LOWER(TRIM(order_status)) = 'rts' OR
-        LOWER(TRIM(order_status)) = 'rto' OR
-        LOWER(TRIM(order_status)) = 'delivered' OR
-        LOWER(TRIM(order_status)) = 'lost' OR
-        LOWER(TRIM(order_status)) = 'ndr' OR
-        LOWER(TRIM(order_status)) = 'dispatched' OR
-        LOWER(TRIM(order_status)) LIKE '%rto-it%' OR
-        LOWER(TRIM(order_status)) LIKE '%rto it%' OR
-        (LOWER(TRIM(order_status)) LIKE '%rto-i%' AND LOWER(TRIM(order_status)) NOT LIKE '%rto-it%') OR
-        LOWER(TRIM(order_status)) LIKE '%rto-ii%' OR
-        LOWER(TRIM(order_status)) LIKE '%rto ii%' OR
-        LOWER(TRIM(order_status)) LIKE '%rto-dispatched%' OR
-        LOWER(TRIM(order_status)) LIKE '%rto dispatched%' OR
-        LOWER(TRIM(order_status)) LIKE '%rto pending%' OR
-        LOWER(TRIM(order_status)) LIKE '%rto-pending%'
-      )
+      AND LOWER(TRIM(order_status)) = 'delivered'
     `;
-    const revenueResult = await query(revenueSql, params);
-    const totalRevenue = revenueResult && revenueResult.length > 0 ? (revenueResult[0].total || 0) : 0;
+    const orderValueResult = await query(orderValueCheckSql, params);
+    const orderValueTotal = orderValueResult && orderValueResult.length > 0 
+      ? parseFloat(orderValueResult[0].total) || 0 
+      : 0;
     
-    logger.debug(`KPI Calculation - Total Revenue: ${totalRevenue}`);
+    logger.info(`KPI Calculation - Total Revenue (total_amount): ₹${totalRevenue} from ${deliveredCount} delivered orders`);
+    logger.info(`KPI Calculation - Order Value (order_value) for comparison: ₹${orderValueTotal}`);
+    logger.info(`KPI Calculation - Difference: ₹${Math.abs(totalRevenue - orderValueTotal)}`);
+    logger.debug(`KPI Calculation - Revenue SQL: ${revenueSql}, Params: ${JSON.stringify(params)}`);
 
     // Average Order Value
     const avgOrderValue = totalOrders > 0 ? (totalRevenue / totalOrders) : 0;
@@ -217,12 +235,16 @@ router.get('/kpis', async (req, res) => {
         })()
       : 0;
 
+    // Ensure totalRevenue is a number before formatting
+    const totalRevenueNum = parseFloat(totalRevenue) || 0;
+    const avgOrderValueNum = parseFloat(avgOrderValue) || 0;
+    
     res.json({
       success: true,
       data: {
         totalOrders,
-        totalRevenue: parseFloat(totalRevenue.toFixed(2)),
-        averageOrderValue: parseFloat(avgOrderValue.toFixed(2)),
+        totalRevenue: parseFloat(totalRevenueNum.toFixed(2)),
+        averageOrderValue: parseFloat(avgOrderValueNum.toFixed(2)),
         topPincode,
         topPincodeRatio,
         topPincodeDeliveredCount,
@@ -419,12 +441,26 @@ router.get('/payment-methods', async (req, res) => {
 
     const results = await query(sql, params);
     
-    const total = results && Array.isArray(results) ? results.reduce((sum, item) => sum + (item.count || 0), 0) : 0;
-    const data = results && Array.isArray(results) ? results.map(item => ({
-      method: item.method || 'Unknown',
-      count: item.count || 0,
-      percentage: total > 0 ? parseFloat(((item.count / total) * 100).toFixed(2)) : 0
-    })) : [];
+    // Ensure counts are parsed as integers and calculate total
+    const total = results && Array.isArray(results) 
+      ? results.reduce((sum, item) => {
+          const count = parseInt(item.count || 0, 10);
+          return sum + (isNaN(count) ? 0 : count);
+        }, 0) 
+      : 0;
+    
+    const data = results && Array.isArray(results) ? results.map(item => {
+      const count = parseInt(item.count || 0, 10);
+      const percentage = total > 0 && !isNaN(count) 
+        ? parseFloat(((count / total) * 100).toFixed(2)) 
+        : 0;
+      
+      return {
+        method: item.method || 'Unknown',
+        count: isNaN(count) ? 0 : count,
+        percentage: percentage
+      };
+    }) : [];
 
     res.json({
       success: true,

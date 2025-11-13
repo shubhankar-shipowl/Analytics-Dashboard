@@ -385,8 +385,29 @@ export const calculateKPIs = (data) => {
   const validOrders = data.filter(row => isCountedInTotalOrders(getStatus(row)));
   const totalOrders = validOrders.length;
   console.log(`📊 Total valid orders: ${totalOrders} out of ${data.length} rows`);
-  const totalRevenue = validOrders.reduce((sum, row) => sum + (parseFloat(row.amount) || 0), 0);
-  const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+  
+  // Total Revenue = Sum of order amount column where status is 'delivered'
+  // Revenue = order amount where status is delivered
+  // Total Revenue = sum of all amounts from delivered orders
+  const deliveredOrders = data.filter(row => {
+    const status = String(getStatus(row)).toLowerCase().trim();
+    return status === 'delivered';
+  });
+  
+  console.log(`📊 Delivered orders count: ${deliveredOrders.length}`);
+  
+  // Sum the amount field (normalized from "Order Amount" or "Total Amount" column)
+  // The normalizeColumnName function maps "Order Amount"/"Total Amount" to 'amount' field
+  const totalRevenue = deliveredOrders.reduce((sum, row) => {
+    // Use amount field (normalized from Order Amount/Total Amount column)
+    // Also check for total_amount in case data comes directly from backend
+    const amount = parseFloat(row.amount || row.total_amount || row.totalAmount || 0);
+    return sum + (isNaN(amount) ? 0 : amount);
+  }, 0);
+  
+  console.log(`📊 Total Revenue: ₹${totalRevenue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} from ${deliveredOrders.length} delivered orders`);
+  
+  const avgOrderValue = totalOrders > 0 ? (totalRevenue / totalOrders) : 0;
 
   // Get Top Pincode by Delivery Ratio
   const topPincodeData = getTopPincodeByDelivery(data);
@@ -548,11 +569,18 @@ export const getPaymentMethodDistribution = (data) => {
   const total = data.length;
   return Object.entries(methodCount)
     .filter(([_, count]) => count > 0)
-    .map(([method, count]) => ({
-      method,
-      count,
-      percentage: ((count / total) * 100).toFixed(2)
-    }))
+    .map(([method, count]) => {
+      const countNum = parseInt(count || 0, 10);
+      const percentage = total > 0 && !isNaN(countNum) 
+        ? parseFloat(((countNum / total) * 100).toFixed(2)) 
+        : 0;
+      
+      return {
+        method,
+        count: isNaN(countNum) ? 0 : countNum,
+        percentage: percentage
+      };
+    })
     .sort((a, b) => b.count - a.count);
 };
 
