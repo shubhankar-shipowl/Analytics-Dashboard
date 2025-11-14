@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { query } = require('../config/database');
 const logger = require('../utils/logger');
+const { cacheMiddleware } = require('../middleware/cache');
 
 // Helper function to build optimized date filters (avoids DATE() function for better index usage)
 const buildDateFilters = (whereClause, params, startDate, endDate) => {
@@ -57,7 +58,8 @@ const buildDateFilters = (whereClause, params, startDate, endDate) => {
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.get('/kpis', async (req, res) => {
+// KPIs endpoint - cache for 2 minutes (frequently accessed, but data changes)
+router.get('/kpis', cacheMiddleware(120), async (req, res) => {
   try {
     const { startDate, endDate, product, products, pincode } = req.query;
 
@@ -122,16 +124,14 @@ router.get('/kpis', async (req, res) => {
     
     logger.debug(`KPI Calculation - Total Orders: ${totalOrders}, Filters: ${JSON.stringify({ startDate, endDate, product, pincode })}`);
 
-    // Total Revenue = Sum of total_amount column where status is 'delivered'
-    // Revenue = order amount where status is delivered
-    // Total Revenue = sum of all amounts from delivered orders
-    // Note: total_amount is DECIMAL(12, 2) in database
-    // IMPORTANT: Use total_amount, NOT order_value - they are different columns
+    // Total Revenue = Sum of order_value column where status is 'delivered'
+    // Revenue = order_value where order_status is delivered
+    // Total Revenue = sum of all order_value from delivered orders
     const revenueSql = `
-      SELECT SUM(total_amount) as total 
+      SELECT SUM(order_value) as total 
       FROM orders 
       ${whereClause} 
-      AND total_amount IS NOT NULL 
+      AND order_value IS NOT NULL 
       AND LOWER(TRIM(order_status)) = 'delivered'
     `;
     const revenueResult = await query(revenueSql, params);
@@ -151,22 +151,7 @@ router.get('/kpis', async (req, res) => {
     const deliveredCountResult = await query(deliveredCountSql, params);
     const deliveredCount = deliveredCountResult && deliveredCountResult.length > 0 ? deliveredCountResult[0].count : 0;
     
-    // Also verify with order_value to see the difference (for debugging)
-    const orderValueCheckSql = `
-      SELECT SUM(order_value) as total 
-      FROM orders 
-      ${whereClause} 
-      AND order_value IS NOT NULL 
-      AND LOWER(TRIM(order_status)) = 'delivered'
-    `;
-    const orderValueResult = await query(orderValueCheckSql, params);
-    const orderValueTotal = orderValueResult && orderValueResult.length > 0 
-      ? parseFloat(orderValueResult[0].total) || 0 
-      : 0;
-    
-    logger.info(`KPI Calculation - Total Revenue (total_amount): ₹${totalRevenue} from ${deliveredCount} delivered orders`);
-    logger.info(`KPI Calculation - Order Value (order_value) for comparison: ₹${orderValueTotal}`);
-    logger.info(`KPI Calculation - Difference: ₹${Math.abs(totalRevenue - orderValueTotal)}`);
+    logger.info(`KPI Calculation - Total Revenue (order_value): ₹${totalRevenue} from ${deliveredCount} delivered orders`);
     logger.debug(`KPI Calculation - Revenue SQL: ${revenueSql}, Params: ${JSON.stringify(params)}`);
 
     // Average Order Value
@@ -297,7 +282,8 @@ router.get('/kpis', async (req, res) => {
  *         description: Server error
  */
 // Get order status distribution
-router.get('/order-status', async (req, res) => {
+// Order status - cache for 3 minutes
+router.get('/order-status', cacheMiddleware(180), async (req, res) => {
   try {
     const { startDate, endDate, product, products, pincode } = req.query;
 
@@ -393,7 +379,8 @@ router.get('/order-status', async (req, res) => {
 });
 
 // Get payment method distribution
-router.get('/payment-methods', async (req, res) => {
+// Payment methods - cache for 3 minutes
+router.get('/payment-methods', cacheMiddleware(180), async (req, res) => {
   try {
     const { startDate, endDate, product, products, pincode } = req.query;
 
@@ -476,7 +463,8 @@ router.get('/payment-methods', async (req, res) => {
 });
 
 // Get fulfillment partner analysis
-router.get('/fulfillment-partners', async (req, res) => {
+// Fulfillment partners - cache for 3 minutes
+router.get('/fulfillment-partners', cacheMiddleware(180), async (req, res) => {
   try {
     const { startDate, endDate, product, products, pincode } = req.query;
 
@@ -550,7 +538,8 @@ router.get('/fulfillment-partners', async (req, res) => {
 });
 
 // Get top products
-router.get('/top-products', async (req, res) => {
+// Top products - cache for 3 minutes
+router.get('/top-products', cacheMiddleware(180), async (req, res) => {
   try {
     const { startDate, endDate, pincode, by = 'orders', limit = 10 } = req.query;
 
@@ -618,7 +607,8 @@ router.get('/top-products', async (req, res) => {
 });
 
 // Get top cities
-router.get('/top-cities', async (req, res) => {
+// Top cities - cache for 3 minutes
+router.get('/top-cities', cacheMiddleware(180), async (req, res) => {
   try {
     const { startDate, endDate, by = 'orders', limit = 10, sort = 'top' } = req.query;
 
@@ -684,7 +674,8 @@ router.get('/top-cities', async (req, res) => {
 });
 
 // Get daily trends
-router.get('/trends', async (req, res) => {
+// Trends - cache for 2 minutes (time-series data)
+router.get('/trends', cacheMiddleware(120), async (req, res) => {
   try {
     const { startDate, endDate, product, products, pincode, view = 'orders' } = req.query;
 
@@ -822,7 +813,8 @@ router.get('/trends', async (req, res) => {
  *       500:
  *         description: Server error
  */
-router.get('/delivery-ratio', async (req, res) => {
+// Delivery ratio - cache for 3 minutes
+router.get('/delivery-ratio', cacheMiddleware(180), async (req, res) => {
   try {
     const { startDate, endDate, product, products, pincode } = req.query;
 
@@ -998,7 +990,8 @@ router.get('/delivery-ratio', async (req, res) => {
  *       500:
  *         description: Server error
  */
-router.get('/good-bad-pincodes', async (req, res) => {
+// Good/bad pincodes - cache for 5 minutes (less frequently changing)
+router.get('/good-bad-pincodes', cacheMiddleware(300), async (req, res) => {
   try {
     const { startDate, endDate, product, products } = req.query;
 

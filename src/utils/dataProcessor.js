@@ -386,9 +386,9 @@ export const calculateKPIs = (data) => {
   const totalOrders = validOrders.length;
   console.log(`📊 Total valid orders: ${totalOrders} out of ${data.length} rows`);
   
-  // Total Revenue = Sum of order amount column where status is 'delivered'
-  // Revenue = order amount where status is delivered
-  // Total Revenue = sum of all amounts from delivered orders
+  // Total Revenue = Sum of order_value column where status is 'delivered'
+  // Revenue = order_value where order_status is delivered
+  // Total Revenue = sum of all order_value from delivered orders
   const deliveredOrders = data.filter(row => {
     const status = String(getStatus(row)).toLowerCase().trim();
     return status === 'delivered';
@@ -396,12 +396,11 @@ export const calculateKPIs = (data) => {
   
   console.log(`📊 Delivered orders count: ${deliveredOrders.length}`);
   
-  // Sum the amount field (normalized from "Order Amount" or "Total Amount" column)
-  // The normalizeColumnName function maps "Order Amount"/"Total Amount" to 'amount' field
+  // Sum the order_value field for delivered orders
   const totalRevenue = deliveredOrders.reduce((sum, row) => {
-    // Use amount field (normalized from Order Amount/Total Amount column)
-    // Also check for total_amount in case data comes directly from backend
-    const amount = parseFloat(row.amount || row.total_amount || row.totalAmount || 0);
+    // Use order_value field (primary field for revenue calculation)
+    // Fallback to amount/total_amount for backward compatibility with local data
+    const amount = parseFloat(row.order_value || row.orderValue || row.amount || row.total_amount || row.totalAmount || 0);
     return sum + (isNaN(amount) ? 0 : amount);
   }, 0);
   
@@ -603,7 +602,7 @@ export const getFulfillmentPartnerAnalysis = (data) => {
       partnerStats[partner] = { orders: 0, revenue: 0 };
     }
     partnerStats[partner].orders++;
-    partnerStats[partner].revenue += parseFloat(row.amount) || 0;
+    partnerStats[partner].revenue += parseFloat(row.order_value || row.orderValue || row.amount || 0) || 0;
   });
 
   return Object.entries(partnerStats)
@@ -703,7 +702,7 @@ export const getTopProducts = (data, by = 'orders', limit = 10) => {
       productStats[product] = { orders: 0, revenue: 0 };
     }
     productStats[product].orders++;
-    productStats[product].revenue += parseFloat(row.amount) || 0;
+    productStats[product].revenue += parseFloat(row.order_value || row.orderValue || row.amount || 0) || 0;
   });
 
   return Object.entries(productStats)
@@ -728,7 +727,7 @@ export const getTopCities = (data, by = 'orders', limit = 10, sortDirection = 't
       cityStats[city] = { orders: 0, revenue: 0 };
     }
     cityStats[city].orders++;
-    cityStats[city].revenue += parseFloat(row.amount) || 0;
+    cityStats[city].revenue += parseFloat(row.order_value || row.orderValue || row.amount || 0) || 0;
   });
 
   // Sort based on direction: 'top' = descending, 'bottom' = ascending

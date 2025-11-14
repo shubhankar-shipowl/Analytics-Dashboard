@@ -49,8 +49,15 @@ const FileUpload = ({ onUploadSuccess, onUploadError, backendConnected = false }
       setProgress(100);
 
       if (result.success) {
-        const message = `✅ File uploaded successfully!\n\n` +
-          `Total Rows: ${result.data.totalRows}\nInserted: ${result.data.inserted}\nErrors: ${result.data.errors}\n\n` +
+        let message = `✅ File uploaded successfully!\n\n` +
+          `Total Rows: ${result.data.totalRows}\n` +
+          `Inserted: ${result.data.inserted} new orders\n`;
+        
+        if (result.data.skipped > 0) {
+          message += `Skipped: ${result.data.skipped} duplicates (already exist)\n`;
+        }
+        
+        message += `Errors: ${result.data.errors}\n\n` +
           `🔄 Refreshing dashboard...`;
         alert(message);
         

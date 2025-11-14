@@ -10,6 +10,7 @@
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
+const compression = require('compression');
 const swaggerUi = require('swagger-ui-express');
 require('dotenv').config();
 
@@ -17,6 +18,8 @@ const { testConnection, getPoolStats } = require('./config/database');
 const logger = require('./utils/logger');
 const { ensureTablesExist } = require('./utils/dbHelper');
 const swaggerSpec = require('./config/swagger');
+const { apiLimiter, analyticsLimiter } = require('./middleware/rateLimiter');
+const { cacheMiddleware, getCacheStats } = require('./middleware/cache');
 const ordersRoutes = require('./routes/orders');
 const analyticsRoutes = require('./routes/analytics');
 const importRoutes = require('./routes/import');
@@ -71,10 +74,26 @@ app.use((req, res, next) => {
 });
 
 // Middleware
+// Compression - compress all responses
+app.use(compression({
+  level: 6, // Compression level (1-9, 6 is a good balance)
+  filter: (req, res) => {
+    // Don't compress responses if client doesn't support it
+    if (req.headers['x-no-compression']) {
+      return false;
+    }
+    // Use compression for all other requests
+    return compression.filter(req, res);
+  }
+}));
+
+// CORS
 app.use(cors({
   origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
   credentials: true
 }));
+
+// Body parsing
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
 
@@ -120,8 +139,10 @@ app.get('/api-docs.json', (req, res) => {
  *                     poolStats:
  *                       type: object
  */
+// Health endpoint - must be BEFORE rate limiting to always be accessible
 app.get('/api/health', (req, res) => {
   const poolStats = getPoolStats();
+  const cacheStats = getCacheStats();
   res.json({ 
     status: 'OK', 
     message: 'Server is running',
@@ -129,14 +150,30 @@ app.get('/api/health', (req, res) => {
     database: {
       connected: true,
       poolStats: poolStats
+    },
+    cache: cacheStats,
+    performance: {
+      nodeVersion: process.version,
+      memory: {
+        used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + ' MB',
+        total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024) + ' MB',
+        rss: Math.round(process.memoryUsage().rss / 1024 / 1024) + ' MB'
+      },
+      uptime: Math.round(process.uptime()) + ' seconds'
     }
   });
 });
 
+// Rate limiting - apply to all API routes (after health endpoint)
+app.use('/api', apiLimiter);
+
 // API Routes
-app.use('/api/orders', ordersRoutes);
-app.use('/api/analytics', analyticsRoutes);
+// Analytics routes with caching and rate limiting
+app.use('/api/analytics', analyticsLimiter, analyticsRoutes);
+// Import routes with strict rate limiting (expensive operations)
 app.use('/api/import', importRoutes);
+// Orders routes
+app.use('/api/orders', ordersRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

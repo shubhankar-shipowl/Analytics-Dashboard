@@ -2,7 +2,7 @@ import React from 'react';
 import KPICard from './KPICard';
 import './KPISection.css';
 
-const KPISection = ({ kpis }) => {
+const KPISection = React.memo(({ kpis }) => {
   return (
     <div className="kpi-section">
       <h2 className="section-title">Key Performance Indicators</h2>
@@ -20,6 +20,8 @@ const KPISection = ({ kpis }) => {
       </div>
     </div>
   );
-};
+});
+
+KPISection.displayName = 'KPISection';
 
 export default KPISection;

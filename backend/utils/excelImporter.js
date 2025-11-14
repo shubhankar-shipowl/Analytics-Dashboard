@@ -262,8 +262,19 @@ const importExcelFile = async (filePath, options = {}) => {
       }
       
       // Insert data in batches with optimized batch size
+      // Skip duplicates unless clearExisting was explicitly set to true
+      const skipDuplicates = !clearExisting;
+      
+      if (skipDuplicates) {
+        logger.info(`📋 Storage Management: Checking for duplicate order_ids before inserting...`);
+        logger.info(`   Mode: Append new orders only (preserving existing data)`);
+      } else {
+        logger.info(`🗑️  Clear mode: All existing data was cleared, inserting all orders...`);
+      }
+      
       logger.info(`Inserting ${normalizedData.length} orders in batches of ${batchSize}...`);
       let totalInserted = 0;
+      let totalSkipped = 0;
       let totalErrors = 0;
       const totalBatches = Math.ceil(normalizedData.length / batchSize);
       
@@ -273,13 +284,16 @@ const importExcelFile = async (filePath, options = {}) => {
         
         try {
           // Use connection for batch insert to maintain transaction
-          const result = await Order.bulkCreate(batch, connection);
-          totalInserted += result.inserted;
+          // Pass skipDuplicates flag to bulkCreate
+          const result = await Order.bulkCreate(batch, connection, skipDuplicates);
+          totalInserted += result.inserted || 0;
+          totalSkipped += result.skipped || 0;
           
           // Log progress every 10 batches or on last batch
           if (batchNumber % 10 === 0 || batchNumber === totalBatches) {
             const progress = ((batchNumber / totalBatches) * 100).toFixed(1);
-            logger.info(`Batch ${batchNumber}/${totalBatches} (${progress}%): Inserted ${result.inserted} orders | Total: ${totalInserted}`);
+            const skippedInfo = totalSkipped > 0 ? ` | Skipped (duplicates): ${totalSkipped}` : '';
+            logger.info(`Batch ${batchNumber}/${totalBatches} (${progress}%): Inserted ${result.inserted} orders | Total: ${totalInserted}${skippedInfo}`);
           }
         } catch (error) {
           logger.error(`Error inserting batch ${batchNumber}:`, error.message);
@@ -294,12 +308,17 @@ const importExcelFile = async (filePath, options = {}) => {
         await connection.query('ALTER TABLE orders ENABLE KEYS');
       }
       
-      logger.info(`Import completed: ${totalInserted} orders inserted, ${totalErrors} errors`);
+      logger.info(`Import completed: ${totalInserted} orders inserted, ${totalSkipped} duplicates skipped, ${totalErrors} errors`);
+      
+      if (totalSkipped > 0) {
+        logger.info(`ℹ️  Storage Management: ${totalSkipped} orders were skipped because they already exist in the database (same order_id)`);
+      }
       
       return {
         success: true,
         totalRows: jsonData.length,
         inserted: totalInserted,
+        skipped: totalSkipped,
         errors: totalErrors
       };
     } finally {

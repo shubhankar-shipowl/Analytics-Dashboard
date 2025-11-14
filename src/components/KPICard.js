@@ -1,19 +1,21 @@
 import React from 'react';
 import './KPICard.css';
 
-const KPICard = ({ title, value, format = 'number', icon }) => {
-  const formatValue = (val) => {
+const KPICard = React.memo(({ title, value, format = 'number', icon }) => {
+  const formatValue = React.useMemo(() => {
     if (format === 'currency') {
-      return `₹${val.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      return (val) => `₹${val.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     }
-    return val.toLocaleString('en-IN');
-  };
+    return (val) => val.toLocaleString('en-IN');
+  }, [format]);
 
   // Check if value is a string (for Top Pincode) or number
-  const displayValue = typeof value === 'string' ? value : formatValue(value || 0);
+  const displayValue = React.useMemo(() => {
+    return typeof value === 'string' ? value : formatValue(value || 0);
+  }, [value, formatValue]);
   
   // Determine if value is long (more than 15 characters)
-  const isLongValue = String(displayValue).length > 15;
+  const isLongValue = React.useMemo(() => String(displayValue).length > 15, [displayValue]);
 
   return (
     <div className="kpi-card">
@@ -26,6 +28,8 @@ const KPICard = ({ title, value, format = 'number', icon }) => {
       </div>
     </div>
   );
-};
+});
+
+KPICard.displayName = 'KPICard';
 
 export default KPICard;

@@ -72,15 +72,101 @@ class Order {
     }
   }
 
-  // Bulk insert orders (optimized)
-  static async bulkCreate(ordersData, providedConnection = null) {
+  // Check for existing order_ids in database
+  static async findExistingOrderIds(orderIds, providedConnection = null) {
     try {
-      if (!ordersData || ordersData.length === 0) {
-        return { inserted: 0, errors: [] };
+      if (!orderIds || orderIds.length === 0) {
+        return new Set();
       }
 
-      // Optimize: Use INSERT IGNORE or ON DUPLICATE KEY UPDATE for better performance
-      // For now, use standard INSERT with optimized batch size
+      // Filter out null/empty order_ids
+      const validOrderIds = orderIds.filter(id => id && String(id).trim() !== '');
+      if (validOrderIds.length === 0) {
+        return new Set();
+      }
+
+      const { pool } = require('../config/database');
+      const connection = providedConnection || await pool.getConnection();
+      const shouldRelease = !providedConnection;
+
+      try {
+        // Query in batches to avoid SQL parameter limits (MySQL has a limit of ~65k parameters)
+        const batchSize = 1000;
+        const existingIds = new Set();
+
+        for (let i = 0; i < validOrderIds.length; i += batchSize) {
+          const batch = validOrderIds.slice(i, i + batchSize);
+          const placeholders = batch.map(() => '?').join(',');
+          const sql = `SELECT DISTINCT order_id FROM orders WHERE order_id IN (${placeholders}) AND order_id IS NOT NULL`;
+          
+          const [results] = await connection.query(sql, batch);
+          if (results && Array.isArray(results)) {
+            results.forEach(row => {
+              if (row.order_id) {
+                existingIds.add(String(row.order_id).trim());
+              }
+            });
+          }
+        }
+
+        return existingIds;
+      } finally {
+        if (shouldRelease) {
+          connection.release();
+        }
+      }
+    } catch (error) {
+      logger.error('Error finding existing order_ids:', error);
+      throw error;
+    }
+  }
+
+  // Bulk insert orders (optimized) - now with duplicate detection
+  static async bulkCreate(ordersData, providedConnection = null, skipDuplicates = true) {
+    try {
+      if (!ordersData || ordersData.length === 0) {
+        return { inserted: 0, skipped: 0, errors: [] };
+      }
+
+      // Filter out duplicates if skipDuplicates is true
+      let ordersToInsert = ordersData;
+      let skippedCount = 0;
+
+      if (skipDuplicates) {
+        // Extract order_ids from the data
+        const orderIds = ordersData
+          .map(order => {
+            const o = new Order(order);
+            return o.order_id ? String(o.order_id).trim() : null;
+          })
+          .filter(id => id && id !== '');
+
+        if (orderIds.length > 0) {
+          // Check which order_ids already exist
+          const existingIds = await Order.findExistingOrderIds(orderIds, providedConnection);
+          
+          // Filter out orders with existing order_ids
+          ordersToInsert = ordersData.filter(order => {
+            const o = new Order(order);
+            const orderId = o.order_id ? String(o.order_id).trim() : null;
+            if (!orderId || orderId === '') {
+              // Include orders without order_id (they can't be duplicates)
+              return true;
+            }
+            const isDuplicate = existingIds.has(orderId);
+            if (isDuplicate) {
+              skippedCount++;
+            }
+            return !isDuplicate;
+          });
+        }
+      }
+
+      if (ordersToInsert.length === 0) {
+        logger.info(`All ${ordersData.length} orders already exist in database (skipped)`);
+        return { inserted: 0, skipped: skippedCount, errors: [] };
+      }
+
       // Include all 34 fields from Excel file
       const sql = `INSERT INTO orders (
         order_account, order_id, channel_order_number, channel_order_date, waybill_number,
@@ -92,7 +178,7 @@ class Order {
       ) VALUES ?`;
 
       // Pre-process all orders at once for better performance
-      const values = ordersData.map(order => {
+      const values = ordersToInsert.map(order => {
         const o = new Order(order);
         return [
           o.order_account || null, o.order_id || null, o.channel_order_number || null, o.channel_order_date || null, o.waybill_number || null,
@@ -124,7 +210,7 @@ class Order {
         }
         
         const affectedRows = result && result.affectedRows ? result.affectedRows : 0;
-        return { inserted: affectedRows, errors: [] };
+        return { inserted: affectedRows, skipped: skippedCount, errors: [] };
       } catch (error) {
         if (shouldRelease) {
           await connection.query('ROLLBACK');

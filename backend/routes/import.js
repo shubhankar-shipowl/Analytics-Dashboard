@@ -76,12 +76,21 @@ const upload = multer({
  *                 data:
  *                   type: object
  *                   properties:
+ *                     totalRows:
+ *                       type: integer
+ *                       description: Total rows in the uploaded file
  *                     inserted:
  *                       type: integer
+ *                       description: Number of new orders inserted
+ *                     skipped:
+ *                       type: integer
+ *                       description: Number of duplicate orders skipped (same order_id already exists)
  *                     errors:
- *                       type: array
- *                       items:
- *                         type: string
+ *                       type: integer
+ *                       description: Number of errors during import
+ *                     duration:
+ *                       type: integer
+ *                       description: Import duration in milliseconds
  *       400:
  *         description: Bad request (no file or invalid file)
  *         content:
@@ -166,12 +175,19 @@ router.post('/excel', upload.single('file'), async (req, res) => {
 
     logger.info(`Import completed in ${duration}ms: ${result.inserted} orders inserted`);
 
+    // Build response message with duplicate info
+    let message = 'File imported successfully';
+    if (result.skipped > 0) {
+      message += `. ${result.skipped} duplicate order(s) were skipped (already exist in database).`;
+    }
+
     res.json({
       success: true,
-      message: 'File imported successfully',
+      message: message,
       data: {
         totalRows: result.totalRows,
         inserted: result.inserted,
+        skipped: result.skipped || 0,
         errors: result.errors,
         duration: duration
       }

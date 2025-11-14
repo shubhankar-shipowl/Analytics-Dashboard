@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import './app.css';
 import { 
     loadExcelData, 
@@ -18,6 +18,7 @@ import {
     getGoodBadPincodesByProduct,
     getPaymentMethodDistribution
   } from './utils/dataProcessor';
+import { debounce } from './utils/debounce';
 import { 
   loadData, 
   isUsingBackend, 
@@ -36,15 +37,16 @@ import {
 import KPISection from './components/KPISection';
 import Filters from './components/Filters';
 import FileUpload from './components/FileUpload';
-import OrderStatusChart from './components/OrderStatusChart';
-import FulfillmentPartnerChart from './components/FulfillmentPartnerChart';
-import PriceRangeChart from './components/PriceRangeChart';
-import TrendChart from './components/TrendChart';
-import TopProductsChart from './components/TopProductsChart';
-import TopCitiesChart from './components/TopCitiesChart';
-import TopNDRCitiesChart from './components/TopNDRCitiesChart';
-import GoodBadPincodesChart from './components/GoodBadPincodesChart';
-import PaymentMethodChart from './components/PaymentMethodChart';
+// Lazy load chart components for code splitting and better performance
+const OrderStatusChart = React.lazy(() => import('./components/OrderStatusChart'));
+const FulfillmentPartnerChart = React.lazy(() => import('./components/FulfillmentPartnerChart'));
+const PriceRangeChart = React.lazy(() => import('./components/PriceRangeChart'));
+const TrendChart = React.lazy(() => import('./components/TrendChart'));
+const TopProductsChart = React.lazy(() => import('./components/TopProductsChart'));
+const TopCitiesChart = React.lazy(() => import('./components/TopCitiesChart'));
+const TopNDRCitiesChart = React.lazy(() => import('./components/TopNDRCitiesChart'));
+const GoodBadPincodesChart = React.lazy(() => import('./components/GoodBadPincodesChart'));
+const PaymentMethodChart = React.lazy(() => import('./components/PaymentMethodChart'));
 
 function App() {
   const [data, setData] = useState([]);
@@ -429,9 +431,8 @@ function App() {
     return filters;
   }, [dateFilter, customStartDate, customEndDate, productFilter, pincodeFilter, formatDateForSQL]);
 
-  // Fetch analytics data from backend when filters change
-  useEffect(() => {
-    const fetchAnalytics = async () => {
+  // Memoized fetch analytics function
+  const fetchAnalytics = useCallback(async () => {
       if (!isUsingBackend()) {
         // Fallback to local calculations
     if (filteredData.length === 0) return;
@@ -711,10 +712,20 @@ function App() {
           setTopNDRCitiesData(getTopNDRCities(filteredData, 10));
         }
       }
-    };
-
-    fetchAnalytics();
   }, [filteredData, buildFilters, dateFilter, customStartDate, customEndDate, productFilter, pincodeFilter, trendViewType, productViewType, cityViewType, citySortDirection, isUsingBackend]);
+
+  // Debounced version of fetchAnalytics - delays API calls by 500ms
+  const debouncedFetchAnalytics = useMemo(
+    () => debounce(() => {
+      fetchAnalytics();
+    }, 500),
+    [fetchAnalytics]
+  );
+
+  // Call debounced fetch when filters change
+  useEffect(() => {
+    debouncedFetchAnalytics();
+  }, [debouncedFetchAnalytics]);
 
   // Get filtered data for extracting unique values (data is already date-filtered from backend)
   const dataForFilterOptions = React.useMemo(() => {
@@ -1053,22 +1064,23 @@ function App() {
         <main className="main-content">
           <KPISection kpis={kpis} />
 
-          <OrderStatusChart 
-            key={`order-status-${filteredData.length}-${dateFilter}-${customStartDate}-${customEndDate}-${productFilter}-${pincodeFilter}`}
-            data={orderStatusData} 
-            deliveryRatio={deliveryRatioData}
-            deliveryRatioByPartner={deliveryRatioByPartnerData}
-            filteredData={filteredData}
-          />
+          <React.Suspense fallback={<div className="chart-container"><div className="loading">Loading chart...</div></div>}>
+            <OrderStatusChart 
+              key={`order-status-${filteredData.length}-${dateFilter}-${customStartDate}-${customEndDate}-${productFilter}-${pincodeFilter}`}
+              data={orderStatusData} 
+              deliveryRatio={deliveryRatioData}
+              deliveryRatioByPartner={deliveryRatioByPartnerData}
+              filteredData={filteredData}
+            />
 
-          <PaymentMethodChart 
-            key={`payment-method-${filteredData.length}-${dateFilter}-${customStartDate}-${customEndDate}-${productFilter}-${pincodeFilter}`}
-            data={paymentMethodData} 
-          />
+            <PaymentMethodChart 
+              key={`payment-method-${filteredData.length}-${dateFilter}-${customStartDate}-${customEndDate}-${productFilter}-${pincodeFilter}`}
+              data={paymentMethodData} 
+            />
 
-          <FulfillmentPartnerChart data={fulfillmentPartnerData} />
+            <FulfillmentPartnerChart data={fulfillmentPartnerData} />
 
-          <PriceRangeChart data={priceRangeData} />
+            <PriceRangeChart data={priceRangeData} />
 
           <div className="chart-container">
             <div style={{ marginBottom: '10px' }}>
@@ -1175,6 +1187,7 @@ function App() {
               />
             </div>
           )}
+          </React.Suspense>
         </main>
       </div>
     </div>
