@@ -34,6 +34,7 @@ module.exports = {
         // For VPS: Replace 'http://YOUR_VPS_IP' with your actual VPS IP or domain
         // Example: 'http://123.45.67.89' or 'http://yourdomain.com'
         REACT_APP_API_URL: 'http://localhost:5009/api', // Change to your VPS IP for production
+        NODE_OPTIONS: '--no-deprecation', // Suppress Node.js deprecation warnings
       },
       env_production: {
         NODE_ENV: 'production',
@@ -41,6 +42,7 @@ module.exports = {
         FRONTEND_PORT: 3006, // Frontend port
         // For VPS: Replace with your VPS IP or domain
         REACT_APP_API_URL: 'http://localhost:5009/api', // CHANGE THIS to your VPS IP/domain
+        NODE_OPTIONS: '--no-deprecation', // Suppress Node.js deprecation warnings
       },
       error_file: './logs/pm2-combined-error.log',
       out_file: './logs/pm2-combined-out.log',
