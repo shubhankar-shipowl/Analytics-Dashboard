@@ -14,6 +14,10 @@ process.env.PORT = process.env.PORT || '5009';
 const frontendPort = process.env.FRONTEND_PORT || '3006';
 process.env.REACT_APP_API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5009/api';
 process.env.BROWSER = 'none'; // Don't auto-open browser
+// Suppress deprecation warnings if not already set
+if (!process.env.NODE_OPTIONS) {
+  process.env.NODE_OPTIONS = '--no-deprecation';
+}
 
 console.log('🚀 Starting Dashboard (Backend + Frontend)...');
 console.log(`📊 Environment: ${process.env.NODE_ENV}`);
@@ -34,7 +38,7 @@ const backend = spawn(backendCmd, [], {
   cwd: __dirname,
   stdio: ['ignore', 'pipe', 'pipe'], // Pipe stdout and stderr
   shell: true,
-  env: { ...process.env, PORT: '5009' }
+  env: { ...process.env, PORT: '5009', NODE_OPTIONS: process.env.NODE_OPTIONS || '--no-deprecation' }
 });
 
 // Pipe backend output
@@ -51,7 +55,7 @@ const frontend = spawn(frontendCmd, [], {
   cwd: __dirname,
   stdio: ['ignore', 'pipe', 'pipe'], // Pipe stdout and stderr
   shell: true,
-  env: { ...process.env, PORT: frontendPort }
+  env: { ...process.env, PORT: frontendPort, NODE_OPTIONS: process.env.NODE_OPTIONS || '--no-deprecation' }
 });
 
 // Pipe frontend output
