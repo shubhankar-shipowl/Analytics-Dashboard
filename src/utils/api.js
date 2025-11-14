@@ -1,5 +1,5 @@
 // API configuration
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5009/api';
 
 // Helper function for API calls
 const apiCall = async (endpoint, options = {}) => {
@@ -39,7 +39,7 @@ const apiCall = async (endpoint, options = {}) => {
     // Enhanced error logging
     if (error.name === 'TypeError' && error.message.includes('fetch')) {
       console.error('API Error: Network error - Backend server may not be running:', error.message);
-      throw new Error('Cannot connect to backend server. Please ensure the backend is running on http://localhost:5000');
+      throw new Error('Cannot connect to backend server. Please ensure the backend is running on http://localhost:5009');
     }
     console.error('API Error:', error);
     throw error;

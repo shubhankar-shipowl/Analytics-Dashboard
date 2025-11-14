@@ -90,7 +90,7 @@ app.use(compression({
 // CORS - Allow multiple origins
 const allowedOrigins = process.env.CORS_ORIGIN 
   ? process.env.CORS_ORIGIN.split(',').map(origin => origin.trim())
-  : ['http://localhost:3000', 'http://localhost:3003'];
+  : ['http://localhost:3000', 'http://localhost:3003', 'http://localhost:3006'];
 
 app.use(cors({
   origin: (origin, callback) => {

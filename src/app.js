@@ -824,7 +824,7 @@ function App() {
             <h3 style={{ marginTop: 0, color: '#856404' }}>Troubleshooting Steps:</h3>
             <ol style={{ textAlign: 'left', color: '#856404' }}>
               <li>Check if backend server is running: <code>npm run dev</code> or <code>cd backend && npm start</code></li>
-              <li>Verify backend is accessible at: <code>http://localhost:5000/api/health</code></li>
+              <li>Verify backend is accessible at: <code>http://localhost:5009/api/health</code></li>
               <li>Check database connection in <code>backend/.env</code></li>
               <li>Ensure MySQL database is running and accessible</li>
               <li>If database is empty, upload data using the upload section</li>

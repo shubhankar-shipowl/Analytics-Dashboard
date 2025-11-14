@@ -3,14 +3,18 @@
  * 
  * This file configures PM2 to manage the Dashboard application processes.
  * 
- * Usage:
- *   pm2 start ecosystem.config.js          # Start all processes
- *   pm2 start ecosystem.config.js --env production  # Start in production mode
- *   pm2 stop ecosystem.config.js            # Stop all processes
- *   pm2 restart ecosystem.config.js         # Restart all processes
- *   pm2 delete ecosystem.config.js          # Delete all processes
- *   pm2 logs                                # View logs
- *   pm2 monit                               # Monitor processes
+ * DEFAULT USAGE (Single Process - Recommended):
+ *   pm2 start ecosystem.config.js --only dashboard          # Start combined backend + frontend
+ *   pm2 start ecosystem.config.js --only dashboard --env production  # Start in production mode
+ *   pm2 stop dashboard                                       # Stop the combined process
+ *   pm2 restart dashboard                                    # Restart the combined process
+ *   pm2 logs dashboard                                       # View logs
+ *   pm2 monit                                                # Monitor processes
+ * 
+ * ALTERNATIVE USAGE (Separate Processes):
+ *   pm2 start ecosystem.config.js --only dashboard-backend   # Start only backend
+ *   pm2 start ecosystem.config.js --only dashboard-frontend   # Start only frontend
+ *   pm2 start ecosystem.config.js                            # Start all processes (combined + separate)
  */
 
 module.exports = {
@@ -25,13 +29,13 @@ module.exports = {
       max_memory_restart: '1500M', // Combined memory limit (1.5GB)
       env: {
         NODE_ENV: 'development',
-        PORT: 5000, // Backend port
-        FRONTEND_PORT: 3003 // Frontend port
+        PORT: 5009, // Backend port
+        FRONTEND_PORT: 3006 // Frontend port
       },
       env_production: {
         NODE_ENV: 'production',
-        PORT: 5000, // Backend port
-        FRONTEND_PORT: 3003 // Frontend port
+        PORT: 5009, // Backend port
+        FRONTEND_PORT: 3006 // Frontend port
       },
       error_file: './logs/pm2-combined-error.log',
       out_file: './logs/pm2-combined-out.log',
@@ -48,7 +52,7 @@ module.exports = {
     },
     {
       name: 'dashboard-backend',
-      script: './backend/server.js',
+      script: './server.js',
       cwd: './backend',
       instances: 1, // Run single instance (can increase for load balancing)
       exec_mode: 'fork', // Use 'cluster' for multiple instances
@@ -56,11 +60,11 @@ module.exports = {
       max_memory_restart: '500M', // Restart if memory exceeds 500MB
       env: {
         NODE_ENV: 'development',
-        PORT: 5000
+        PORT: 5009
       },
       env_production: {
         NODE_ENV: 'production',
-        PORT: 5000
+        PORT: 5009
       },
       error_file: './logs/pm2-backend-error.log',
       out_file: './logs/pm2-backend-out.log',
@@ -76,7 +80,7 @@ module.exports = {
       listen_timeout: 10000, // Timeout for listen event
       shutdown_with_message: true, // Graceful shutdown
       // Environment variables from .env file
-      env_file: './backend/.env'
+      env_file: './.env'
     },
     {
       name: 'dashboard-frontend',
@@ -88,14 +92,14 @@ module.exports = {
       max_memory_restart: '1G', // React apps can use more memory
       env: {
         NODE_ENV: 'development',
-        PORT: 3003,
-        REACT_APP_API_URL: 'http://localhost:5000/api',
+        PORT: 3006,
+        REACT_APP_API_URL: 'http://localhost:5009/api',
         BROWSER: 'none' // Don't auto-open browser
       },
       env_production: {
         NODE_ENV: 'production',
-        PORT: 3003,
-        REACT_APP_API_URL: 'http://localhost:5000/api',
+        PORT: 3006,
+        REACT_APP_API_URL: 'http://localhost:5009/api',
         BROWSER: 'none'
       },
       error_file: './logs/pm2-frontend-error.log',

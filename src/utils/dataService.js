@@ -49,7 +49,7 @@ export const loadData = async (forceRefresh = false, filters = {}) => {
     throw new Error(
       `Backend server is not available. ` +
       `Please ensure:\n` +
-      `1. Backend server is running (http://localhost:5000)\n` +
+      `1. Backend server is running (http://localhost:5009)\n` +
       `2. Database connection is configured correctly\n` +
       `3. Start the backend server: cd backend && npm start` 
     );
@@ -132,7 +132,7 @@ export const loadData = async (forceRefresh = false, filters = {}) => {
     throw new Error(
       `Failed to fetch data from MySQL database: ${error.message}. ` +
       `Please ensure:\n` +
-      `1. Backend server is running (http://localhost:5000)\n` +
+      `1. Backend server is running (http://localhost:5009)\n` +
       `2. Database connection is configured correctly\n` +
       `3. Database has data (upload Excel file if needed)`
     );

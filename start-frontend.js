@@ -14,8 +14,8 @@ const args = ['start'];
 
 // Set environment variables
 process.env.NODE_ENV = process.env.NODE_ENV || 'development';
-process.env.PORT = process.env.PORT || process.env.FRONTEND_PORT || '3003';
-process.env.REACT_APP_API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+process.env.PORT = process.env.PORT || process.env.FRONTEND_PORT || '3006';
+process.env.REACT_APP_API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5009/api';
 process.env.BROWSER = 'none'; // Don't auto-open browser
 
 console.log('Starting React development server...');

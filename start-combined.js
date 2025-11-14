@@ -10,14 +10,14 @@ const path = require('path');
 
 // Set environment variables
 process.env.NODE_ENV = process.env.NODE_ENV || 'development';
-process.env.PORT = process.env.PORT || '5000';
-const frontendPort = process.env.FRONTEND_PORT || '3003';
-process.env.REACT_APP_API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+process.env.PORT = process.env.PORT || '5009';
+const frontendPort = process.env.FRONTEND_PORT || '3006';
+process.env.REACT_APP_API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5009/api';
 process.env.BROWSER = 'none'; // Don't auto-open browser
 
 console.log('🚀 Starting Dashboard (Backend + Frontend)...');
 console.log(`📊 Environment: ${process.env.NODE_ENV}`);
-console.log(`🔗 Backend: http://localhost:5000`);
+console.log(`🔗 Backend: http://localhost:5009`);
 console.log(`🌐 Frontend: http://localhost:${frontendPort}`);
 console.log('');
 
@@ -33,7 +33,7 @@ const backend = spawn(backendCmd, [], {
   cwd: __dirname,
   stdio: ['ignore', 'pipe', 'pipe'], // Pipe stdout and stderr
   shell: true,
-  env: { ...process.env, PORT: '5000' }
+  env: { ...process.env, PORT: '5009' }
 });
 
 // Pipe backend output
