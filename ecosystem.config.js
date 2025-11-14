@@ -1,8 +1,8 @@
 /**
  * PM2 Ecosystem Configuration
- * 
+ *
  * This file configures PM2 to manage the Dashboard application processes.
- * 
+ *
  * DEFAULT USAGE (Single Process - Recommended):
  *   pm2 start ecosystem.config.js --only dashboard          # Start combined backend + frontend
  *   pm2 start ecosystem.config.js --only dashboard --env production  # Start in production mode
@@ -10,7 +10,7 @@
  *   pm2 restart dashboard                                    # Restart the combined process
  *   pm2 logs dashboard                                       # View logs
  *   pm2 monit                                                # Monitor processes
- * 
+ *
  * ALTERNATIVE USAGE (Separate Processes):
  *   pm2 start ecosystem.config.js --only dashboard-backend   # Start only backend
  *   pm2 start ecosystem.config.js --only dashboard-frontend   # Start only frontend
@@ -30,12 +30,17 @@ module.exports = {
       env: {
         NODE_ENV: 'development',
         PORT: 5009, // Backend port
-        FRONTEND_PORT: 3006 // Frontend port
+        FRONTEND_PORT: 3006, // Frontend port
+        // For VPS: Replace 'http://YOUR_VPS_IP' with your actual VPS IP or domain
+        // Example: 'http://123.45.67.89' or 'http://yourdomain.com'
+        REACT_APP_API_URL: 'http://localhost:5009/api', // Change to your VPS IP for production
       },
       env_production: {
         NODE_ENV: 'production',
         PORT: 5009, // Backend port
-        FRONTEND_PORT: 3006 // Frontend port
+        FRONTEND_PORT: 3006, // Frontend port
+        // For VPS: Replace with your VPS IP or domain
+        REACT_APP_API_URL: 'http://localhost:5009/api', // CHANGE THIS to your VPS IP/domain
       },
       error_file: './logs/pm2-combined-error.log',
       out_file: './logs/pm2-combined-out.log',
@@ -48,7 +53,7 @@ module.exports = {
       restart_delay: 4000,
       kill_timeout: 10000, // Longer timeout for graceful shutdown of both processes
       wait_ready: false,
-      listen_timeout: 30000
+      listen_timeout: 30000,
     },
     {
       name: 'dashboard-backend',
@@ -60,11 +65,11 @@ module.exports = {
       max_memory_restart: '500M', // Restart if memory exceeds 500MB
       env: {
         NODE_ENV: 'development',
-        PORT: 5009
+        PORT: 5009,
       },
       env_production: {
         NODE_ENV: 'production',
-        PORT: 5009
+        PORT: 5009,
       },
       error_file: './logs/pm2-backend-error.log',
       out_file: './logs/pm2-backend-out.log',
@@ -80,7 +85,7 @@ module.exports = {
       listen_timeout: 10000, // Timeout for listen event
       shutdown_with_message: true, // Graceful shutdown
       // Environment variables from .env file
-      env_file: './.env'
+      env_file: './.env',
     },
     {
       name: 'dashboard-frontend',
@@ -94,13 +99,13 @@ module.exports = {
         NODE_ENV: 'development',
         PORT: 3006,
         REACT_APP_API_URL: 'http://localhost:5009/api',
-        BROWSER: 'none' // Don't auto-open browser
+        BROWSER: 'none', // Don't auto-open browser
       },
       env_production: {
         NODE_ENV: 'production',
         PORT: 3006,
         REACT_APP_API_URL: 'http://localhost:5009/api',
-        BROWSER: 'none'
+        BROWSER: 'none',
       },
       error_file: './logs/pm2-frontend-error.log',
       out_file: './logs/pm2-frontend-out.log',
@@ -114,8 +119,7 @@ module.exports = {
       kill_timeout: 5000,
       // Only start frontend if backend is running
       wait_ready: false,
-      listen_timeout: 30000 // React dev server takes longer to start
-    }
-  ]
+      listen_timeout: 30000, // React dev server takes longer to start
+    },
+  ],
 };
-
