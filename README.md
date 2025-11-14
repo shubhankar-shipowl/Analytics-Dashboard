@@ -147,6 +147,50 @@ npm run backend:dev
 npm run frontend:dev
 ```
 
+## Production Deployment with PM2
+
+For production environments, we recommend using PM2 (Process Manager 2) for process management, auto-restart, and monitoring.
+
+### Install PM2
+
+```bash
+npm install -g pm2
+```
+
+### Start with PM2
+
+**Development Mode:**
+```bash
+npm run pm2:start
+```
+
+**Production Mode:**
+```bash
+npm run pm2:start:prod
+```
+
+### PM2 Management Commands
+
+```bash
+npm run pm2:status    # View process status
+npm run pm2:logs      # View logs
+npm run pm2:monit     # Real-time monitoring
+npm run pm2:stop      # Stop all processes
+npm run pm2:restart   # Restart all processes
+npm run pm2:delete    # Delete all processes
+```
+
+### Auto-Start on System Boot
+
+To make the application start automatically when the system reboots:
+
+```bash
+npm run pm2:startup
+npm run pm2:save
+```
+
+For detailed PM2 documentation, see [PM2_GUIDE.md](./PM2_GUIDE.md).
+
 ### Alternative: Using Script Files
 
 You can also use the provided script files:
