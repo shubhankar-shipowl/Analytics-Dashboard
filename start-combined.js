@@ -23,11 +23,12 @@ console.log('');
 
 const isWindows = process.platform === 'win32';
 
-// Start backend - use shell on Windows
+// Start backend - use npm start (PM2 handles restarts, so nodemon not needed)
 const backendPath = path.join(__dirname, 'backend');
+// Always use npm start for PM2 (no nodemon needed - PM2 handles restarts)
 const backendCmd = isWindows 
-  ? `cd /d "${backendPath}" && npm run dev`
-  : `cd "${backendPath}" && npm run dev`;
+  ? `cd /d "${backendPath}" && npm start`
+  : `cd "${backendPath}" && npm start`;
 
 const backend = spawn(backendCmd, [], {
   cwd: __dirname,
