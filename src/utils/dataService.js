@@ -1,5 +1,5 @@
 // Data service to handle data loading from backend API (database only)
-import { analyticsAPI, ordersAPI, importAPI, healthCheck } from './api';
+import { analyticsAPI, ordersAPI, importAPI, healthCheck, getAPIBaseURLWithoutPath } from './api';
 
 // Check if backend is available
 let useBackend = false;
@@ -15,8 +15,8 @@ const checkBackend = async (forceRefresh = false) => {
     // Accept either format
     if (response && (response.success === true || response.status === 'OK')) {
       useBackend = true;
-      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5009/api';
-      console.log(`✅ Backend API connected at ${apiUrl.replace('/api', '')} - using MySQL database`);
+      const apiUrl = getAPIBaseURLWithoutPath();
+      console.log(`✅ Backend API connected at ${apiUrl} - using MySQL database`);
       backendChecked = true;
       return true;
     } else {
@@ -27,8 +27,7 @@ const checkBackend = async (forceRefresh = false) => {
     }
   } catch (error) {
     useBackend = false;
-    const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5009/api';
-    const baseUrl = apiUrl.replace('/api', '');
+    const baseUrl = getAPIBaseURLWithoutPath();
     console.warn(`⚠️ Backend API not available at ${baseUrl}:`, error.message);
     console.warn('💡 Make sure backend is running. Check with: pm2 status or ./show-ports.sh');
     backendChecked = true;
@@ -51,8 +50,7 @@ export const loadData = async (forceRefresh = false, filters = {}) => {
   const isBackendAvailable = await checkBackend(forceRefresh);
   
   if (!isBackendAvailable) {
-    const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5009/api';
-    const baseUrl = apiUrl.replace('/api', '');
+    const baseUrl = getAPIBaseURLWithoutPath();
     throw new Error(
       `Backend server is not available at ${baseUrl}.\n\n` +
       `Please ensure:\n` +
@@ -139,8 +137,7 @@ export const loadData = async (forceRefresh = false, filters = {}) => {
     }
   } catch (error) {
     console.error('❌ Error loading from database:', error.message);
-    const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5009/api';
-    const baseUrl = apiUrl.replace('/api', '');
+    const baseUrl = getAPIBaseURLWithoutPath();
     
     // Database is the single source of truth - no fallbacks
     let errorMessage = `Failed to fetch data from MySQL database: ${error.message}.\n\n`;

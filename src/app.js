@@ -832,8 +832,7 @@ function App() {
 
   if (error) {
     const isBackendError = error.includes('database') || error.includes('MySQL') || error.includes('backend') || error.includes('Cannot connect');
-    const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5009/api';
-    const baseUrl = apiUrl.replace('/api', '');
+    const baseUrl = getAPIBaseURLWithoutPath();
     
     return (
       <div className="error-container">

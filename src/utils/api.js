@@ -1,23 +1,40 @@
 // API configuration
 // For VPS: Use environment variable, fallback to VPS URL if on VPS
 const getAPIBaseURL = () => {
+  // First, check environment variable (set by PM2 or build process)
+  if (process.env.REACT_APP_API_URL) {
+    return process.env.REACT_APP_API_URL;
+  }
+  
   // Check if we're on VPS (window.location will be available in browser)
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname;
     // If accessing via VPS domain, use VPS backend URL
     if (hostname.includes('srv512766.hstgr.cloud') || hostname.includes('hstgr.cloud')) {
-      return process.env.REACT_APP_API_URL || 'http://srv512766.hstgr.cloud:5009/api';
+      return 'http://srv512766.hstgr.cloud:5009/api';
+    }
+    // If accessing via IP address (89.116.21.112), use that IP for backend
+    if (hostname === '89.116.21.112' || hostname.match(/^\d+\.\d+\.\d+\.\d+$/)) {
+      return `http://${hostname}:5009/api`;
     }
   }
-  // Use environment variable or fallback to localhost
-  return process.env.REACT_APP_API_URL || 'http://localhost:5009/api';
+  // Fallback to localhost for local development
+  return 'http://localhost:5009/api';
 };
 
 const API_BASE_URL = getAPIBaseURL();
 
-// Log API URL for debugging (only in development)
-if (process.env.NODE_ENV === 'development') {
+// Export function to get base URL without /api
+export const getAPIBaseURLWithoutPath = () => {
+  return API_BASE_URL.replace('/api', '');
+};
+
+// Log API URL for debugging (always log in browser)
+if (typeof window !== 'undefined') {
   console.log('🔗 API Base URL:', API_BASE_URL);
+  console.log('🌐 Current Hostname:', window.location.hostname);
+  console.log('📋 Environment:', process.env.NODE_ENV);
+  console.log('🔧 REACT_APP_API_URL:', process.env.REACT_APP_API_URL || 'not set');
 }
 
 // Create a fetch with timeout
