@@ -119,9 +119,11 @@ app.use(
   }),
 );
 
-// Body parsing
-app.use(bodyParser.json({ limit: '50mb' }));
-app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
+// Body parsing - Increased limits for large file uploads
+// Note: For multipart/form-data (file uploads), multer handles the limit separately
+const MAX_BODY_SIZE = process.env.MAX_BODY_SIZE || '200mb';
+app.use(bodyParser.json({ limit: MAX_BODY_SIZE }));
+app.use(bodyParser.urlencoded({ extended: true, limit: MAX_BODY_SIZE }));
 
 // Swagger UI
 app.use(

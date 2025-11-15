@@ -22,6 +22,9 @@ const storage = multer.diskStorage({
   }
 });
 
+// Maximum file size: 200MB (can be increased if needed)
+const MAX_FILE_SIZE = parseInt(process.env.MAX_UPLOAD_SIZE) || 200 * 1024 * 1024; // 200MB default
+
 const upload = multer({
   storage: storage,
   fileFilter: (req, file, cb) => {
@@ -30,11 +33,15 @@ const upload = multer({
     if (allowedExtensions.includes(ext)) {
       cb(null, true);
     } else {
-      cb(new Error('Only Excel files (.xlsx, .xls) are allowed'));
+      cb(new Error(`Only Excel files (.xlsx, .xls, .csv) are allowed. Received: ${ext}`));
     }
   },
   limits: {
-    fileSize: 50 * 1024 * 1024 // 50MB limit
+    fileSize: MAX_FILE_SIZE, // 200MB limit (configurable via MAX_UPLOAD_SIZE env var)
+    files: 1, // Only allow single file upload
+    fields: 10, // Limit number of form fields
+    fieldNameSize: 100, // Limit field name size
+    fieldSize: 1024 * 1024 // 1MB limit for field values
   }
 });
 
@@ -104,17 +111,60 @@ const upload = multer({
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.post('/excel', upload.single('file'), async (req, res) => {
+// Error handler for multer errors (file size, file type, etc.)
+const handleMulterError = (err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      const maxSizeMB = MAX_FILE_SIZE / (1024 * 1024);
+      logger.error(`File upload error: File too large. Maximum size: ${maxSizeMB}MB`);
+      return res.status(400).json({
+        success: false,
+        error: `File too large. Maximum file size is ${maxSizeMB}MB (${MAX_FILE_SIZE} bytes)`,
+        maxSize: MAX_FILE_SIZE,
+        maxSizeMB: maxSizeMB
+      });
+    } else if (err.code === 'LIMIT_FILE_COUNT') {
+      logger.error('File upload error: Too many files');
+      return res.status(400).json({
+        success: false,
+        error: 'Only one file can be uploaded at a time'
+      });
+    } else {
+      logger.error(`Multer error: ${err.code} - ${err.message}`);
+      return res.status(400).json({
+        success: false,
+        error: `Upload error: ${err.message}`
+      });
+    }
+  } else if (err) {
+    // Handle other upload errors (file type, etc.)
+    logger.error(`File upload error: ${err.message}`);
+    return res.status(400).json({
+      success: false,
+      error: err.message || 'File upload failed'
+    });
+  }
+  next();
+};
+
+router.post('/excel', upload.single('file'), handleMulterError, async (req, res) => {
   const startTime = Date.now();
   let importLogId = null;
   
   try {
     if (!req.file) {
+      logger.warn('Upload request received but no file found');
       return res.status(400).json({
         success: false,
-        error: 'No file uploaded'
+        error: 'No file uploaded. Please select an Excel file (.xlsx, .xls, or .csv)',
+        maxFileSize: `${MAX_FILE_SIZE / (1024 * 1024)}MB`,
+        allowedTypes: ['.xlsx', '.xls', '.csv']
       });
     }
+
+    // Log file details
+    const fileSizeMB = (req.file.size / (1024 * 1024)).toFixed(2);
+    logger.info(`📤 File upload received: ${req.file.originalname} (${fileSizeMB}MB)`);
 
     // Get clearExisting from body (can be string "true"/"false" or boolean)
     let clearExisting = false;
@@ -195,7 +245,30 @@ router.post('/excel', upload.single('file'), async (req, res) => {
 
   } catch (error) {
     const duration = Date.now() - startTime;
-    logger.error('Import error:', error);
+    logger.error('❌ Import error:', error);
+    logger.error('Error stack:', error.stack);
+
+    // Provide more detailed error messages
+    let errorMessage = error.message || 'Import failed';
+    let errorCode = 500;
+
+    // Handle specific error types
+    if (error.code === 'ENOENT') {
+      errorMessage = 'Uploaded file not found. Please try uploading again.';
+      errorCode = 400;
+    } else if (error.code === 'EACCES') {
+      errorMessage = 'Permission denied. Cannot access upload directory.';
+      errorCode = 500;
+    } else if (error.message && error.message.includes('File too large')) {
+      errorMessage = `File too large. Maximum file size is ${MAX_FILE_SIZE / (1024 * 1024)}MB`;
+      errorCode = 400;
+    } else if (error.message && error.message.includes('spreadsheet')) {
+      errorMessage = 'Invalid Excel file format. Please ensure the file is a valid .xlsx, .xls, or .csv file.';
+      errorCode = 400;
+    } else if (error.message && error.message.includes('database')) {
+      errorMessage = 'Database error during import. Please check database connection and try again.';
+      errorCode = 500;
+    }
 
     // Update import log with error (only if table exists)
     if (importLogId) {
@@ -204,7 +277,7 @@ router.post('/excel', upload.single('file'), async (req, res) => {
           `UPDATE import_logs 
            SET status = 'failed', error_message = ?, completed_at = NOW() 
            WHERE id = ?`,
-          [error.message, importLogId]
+          [errorMessage, importLogId]
         );
       } catch (logError) {
         // Non-critical
@@ -215,13 +288,24 @@ router.post('/excel', upload.single('file'), async (req, res) => {
     }
 
     // Clean up uploaded file on error
-    if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
+    if (req.file && req.file.path && fs.existsSync(req.file.path)) {
+      try {
+        fs.unlinkSync(req.file.path);
+        logger.info('Cleaned up uploaded file after error');
+      } catch (cleanupError) {
+        logger.warn('Could not clean up uploaded file:', cleanupError.message);
+      }
     }
 
-    res.status(500).json({
+    res.status(errorCode).json({
       success: false,
-      error: error.message || 'Import failed'
+      error: errorMessage,
+      duration: duration,
+      maxFileSize: `${MAX_FILE_SIZE / (1024 * 1024)}MB`,
+      ...(process.env.NODE_ENV === 'development' && { 
+        details: error.stack,
+        originalError: error.message 
+      })
     });
   }
 });
