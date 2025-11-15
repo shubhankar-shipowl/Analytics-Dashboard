@@ -261,10 +261,26 @@ const getPoolStats = () => {
   };
 };
 
+// Close database connection pool gracefully
+const closePool = async () => {
+  try {
+    if (pool && pool.end) {
+      await pool.end();
+      logger.info('✅ Database connection pool closed successfully');
+    } else {
+      logger.warn('⚠️ Database pool not available or already closed');
+    }
+  } catch (error) {
+    logger.error('Error closing database pool:', error.message);
+    throw error;
+  }
+};
+
 module.exports = {
   pool,
   testConnection,
   query,
-  getPoolStats
+  getPoolStats,
+  closePool
 };
 

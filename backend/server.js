@@ -14,7 +14,7 @@ const compression = require('compression');
 const swaggerUi = require('swagger-ui-express');
 require('dotenv').config();
 
-const { testConnection, getPoolStats } = require('./config/database');
+const { testConnection, getPoolStats, closePool } = require('./config/database');
 const logger = require('./utils/logger');
 const { startHealthMonitoring } = require('./utils/processMonitor');
 const { ensureTablesExist } = require('./utils/dbHelper');
@@ -370,7 +370,6 @@ const gracefulShutdown = async (signal) => {
 
   try {
     // Close database connections gracefully
-    const { closePool } = require('./config/database');
     await closePool();
     logger.info('✅ Database connections closed');
   } catch (error) {
