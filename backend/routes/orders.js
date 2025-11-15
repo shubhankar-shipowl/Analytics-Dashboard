@@ -82,6 +82,11 @@ router.get('/', async (req, res) => {
       offset = 0 
     } = req.query;
 
+    // Enforce maximum limit to prevent slow queries
+    const maxLimit = 1000;
+    const safeLimit = Math.min(parseInt(limit) || 100, maxLimit);
+    const safeOffset = Math.max(parseInt(offset) || 0, 0);
+
     const filters = {};
     if (startDate) {
       filters.startDate = startDate;
@@ -98,7 +103,7 @@ router.get('/', async (req, res) => {
     if (order_id) filters.order_id = order_id;
 
     logger.info(`📊 Orders API - Fetching orders with filters:`, JSON.stringify(filters, null, 2));
-    const orders = await Order.find(filters, { limit, offset });
+    const orders = await Order.find(filters, { limit: safeLimit, offset: safeOffset });
     const total = await Order.count(filters);
 
     res.json({
@@ -106,9 +111,9 @@ router.get('/', async (req, res) => {
       data: orders,
       pagination: {
         total,
-        limit: parseInt(limit),
-        offset: parseInt(offset),
-        hasMore: (parseInt(offset) + parseInt(limit)) < total
+        limit: safeLimit,
+        offset: safeOffset,
+        hasMore: (safeOffset + safeLimit) < total
       }
     });
   } catch (error) {

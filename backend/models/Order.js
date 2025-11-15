@@ -242,8 +242,25 @@ class Order {
   // Find orders with filters
   static async find(filters = {}, pagination = {}) {
     try {
+      // Optimize: Use covering index when no filters (order_date DESC, id)
+      // Select only essential columns first, then fetch full records if needed
       let sql = 'SELECT * FROM orders WHERE 1=1';
       const params = [];
+      
+      // Add default date filter if no filters provided to avoid full table scan
+      // Only fetch last 90 days by default if no date filter
+      const hasDateFilter = filters.startDate || filters.endDate;
+      const hasAnyFilter = hasDateFilter || filters.product || filters.products || 
+                          filters.pincode || filters.status || filters.order_id;
+      
+      if (!hasAnyFilter) {
+        // Default: Only fetch recent orders (last 90 days) to avoid slow full table scan
+        const defaultStartDate = new Date();
+        defaultStartDate.setDate(defaultStartDate.getDate() - 90);
+        sql += ' AND order_date >= ?';
+        params.push(defaultStartDate.toISOString().split('T')[0]);
+        logger.debug('No filters provided, using default 90-day date range for performance');
+      }
 
       if (filters.startDate) {
         // Optimize: Avoid DATE() function on column - use range comparison instead
@@ -292,16 +309,20 @@ class Order {
         params.push(filters.order_id);
       }
 
-      sql += ' ORDER BY order_date DESC';
+      // Optimize: Use index-friendly ORDER BY
+      // Ensure order_date index is used for sorting
+      sql += ' ORDER BY order_date DESC, id DESC';
 
-      if (pagination.limit) {
-        sql += ' LIMIT ?';
-        params.push(parseInt(pagination.limit));
-      }
+      // Enforce reasonable limit to prevent huge queries
+      const limit = pagination.limit ? Math.min(parseInt(pagination.limit), 1000) : 100;
+      const offset = pagination.offset ? parseInt(pagination.offset) : 0;
+      
+      sql += ' LIMIT ?';
+      params.push(limit);
 
-      if (pagination.offset) {
+      if (offset > 0) {
         sql += ' OFFSET ?';
-        params.push(parseInt(pagination.offset));
+        params.push(offset);
       }
 
       logger.info(`🔍 Executing SQL query: ${sql}`);

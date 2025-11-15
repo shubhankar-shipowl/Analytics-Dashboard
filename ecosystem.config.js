@@ -61,9 +61,9 @@ module.exports = {
 
       // Process Management - Enhanced for VPS Production
       max_memory_restart: '2G', // Increased for large file processing and React dev server
-      min_uptime: '60s', // Longer minimum uptime for VPS stability
-      max_restarts: 10, // Reduced for VPS - prevent restart loops
-      restart_delay: 5000, // Longer delay between restarts for VPS
+      min_uptime: '30s', // Minimum uptime before considering stable
+      max_restarts: 15, // Allow recovery attempts but prevent infinite loops
+      restart_delay: 4000, // Delay between restarts
       autorestart: true,
       // VPS Optimization: Add exponential backoff
       exp_backoff_restart_delay: 100,
@@ -95,9 +95,6 @@ module.exports = {
       // VPS: Optimize for production
       node_args: '--max-old-space-size=2048 --optimize-for-size',
       interpreter_args: '',
-
-      // Error Handling
-      exp_backoff_restart_delay: 100,
 
       // Additional PM2 Features
       pmx: false, // Disable PMX for better performance
@@ -148,13 +145,7 @@ module.exports = {
 
       // Health Monitoring
       watch: false,
-      ignore_watch: [
-        'node_modules',
-        'logs',
-        'uploads',
-        '*.log',
-        '.git',
-      ],
+      ignore_watch: ['node_modules', 'logs', 'uploads', '*.log', '.git'],
 
       // Advanced Process Settings
       kill_timeout: 5000,
@@ -239,7 +230,8 @@ module.exports = {
       repo: 'YOUR_REPOSITORY_URL',
       path: '/var/www/analytics-dashboard',
       'pre-deploy-local': '',
-      'post-deploy': 'npm install && cd backend && npm install && cd .. && pm2 reload ecosystem.config.js --env production && pm2 save',
+      'post-deploy':
+        'npm install && cd backend && npm install && cd .. && pm2 reload ecosystem.config.js --env production && pm2 save',
       'pre-setup': 'mkdir -p logs backend/logs temp uploads backend/uploads',
     },
   },

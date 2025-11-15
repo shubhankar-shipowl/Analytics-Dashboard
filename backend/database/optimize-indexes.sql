@@ -37,6 +37,13 @@ CREATE INDEX IF NOT EXISTS idx_city_date ON orders(city, order_date);
 -- Index for state + date queries
 CREATE INDEX IF NOT EXISTS idx_state_date ON orders(state, order_date);
 
+-- CRITICAL: Add covering index for ORDER BY order_date DESC queries (fixes slow queries)
+-- This is the most important index for the orders list endpoint
+CREATE INDEX IF NOT EXISTS idx_order_date_id_desc ON orders(order_date DESC, id DESC);
+
+-- Alternative for ascending order
+CREATE INDEX IF NOT EXISTS idx_order_date_id_asc ON orders(order_date ASC, id ASC);
+
 -- Optimize existing indexes - ensure they're being used
 -- Analyze tables to update statistics
 ANALYZE TABLE orders;

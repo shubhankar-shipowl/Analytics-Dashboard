@@ -51,6 +51,9 @@ async function optimizeDatabase() {
         CREATE INDEX IF NOT EXISTS idx_payment_date_status ON orders(payment_method, order_date, order_status);
         CREATE INDEX IF NOT EXISTS idx_city_date ON orders(city, order_date);
         CREATE INDEX IF NOT EXISTS idx_state_date ON orders(state, order_date);
+        -- CRITICAL: Covering index for ORDER BY order_date DESC (fixes slow queries)
+        CREATE INDEX IF NOT EXISTS idx_order_date_id_desc ON orders(order_date DESC, id DESC);
+        CREATE INDEX IF NOT EXISTS idx_order_date_id_asc ON orders(order_date ASC, id ASC);
       `;
     }
 

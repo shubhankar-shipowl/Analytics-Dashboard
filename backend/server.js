@@ -16,6 +16,7 @@ require('dotenv').config();
 
 const { testConnection, getPoolStats } = require('./config/database');
 const logger = require('./utils/logger');
+const { startHealthMonitoring } = require('./utils/processMonitor');
 const { ensureTablesExist } = require('./utils/dbHelper');
 const swaggerSpec = require('./config/swagger');
 const { apiLimiter, analyticsLimiter } = require('./middleware/rateLimiter');
@@ -350,6 +351,10 @@ const startServer = async () => {
         '═══════════════════════════════════════════════════════════',
       );
       logger.info('');
+      
+      // Start health monitoring
+      startHealthMonitoring(5); // Check every 5 minutes
+      logger.info('✅ Process health monitoring started');
     });
   } catch (error) {
     logger.error('Failed to start server:', error);
@@ -364,20 +369,48 @@ const gracefulShutdown = async (signal) => {
   );
 
   try {
-    // Close database connections
-    const { pool } = require('./config/database');
-    await pool.end();
+    // Close database connections gracefully
+    const { closePool } = require('./config/database');
+    await closePool();
     logger.info('✅ Database connections closed');
   } catch (error) {
     logger.error('Error closing database connections:', error);
   }
 
-  process.exit(0);
+  // Give a moment for cleanup
+  setTimeout(() => {
+    process.exit(0);
+  }, 1000);
 };
 
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
+// Handle unhandled promise rejections (prevent crashes)
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  // Don't exit - log and continue
+  // PM2 will restart if needed
+});
+
+// Handle uncaught exceptions (prevent crashes)
+process.on('uncaughtException', (error) => {
+  logger.error('Uncaught Exception:', error);
+  // Log but don't exit immediately - give PM2 a chance to handle it
+  // Only exit if it's a critical error
+  if (error.code === 'EADDRINUSE' || error.code === 'EACCES') {
+    logger.error('Critical error - exiting:', error.message);
+    process.exit(1);
+  }
+  // For other errors, log and let PM2 handle restart
+});
+
+// Keep process alive - prevent accidental exits
+process.on('exit', (code) => {
+  logger.info(`Process exiting with code ${code}`);
+});
+
+// Start server
 startServer();
 
 module.exports = app;

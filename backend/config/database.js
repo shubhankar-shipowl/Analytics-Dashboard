@@ -56,8 +56,54 @@ pool.on('connection', (connection) => {
 
 pool.on('error', (err) => {
   logger.error('MySQL pool error:', err);
-  if (err.code === 'PROTOCOL_CONNECTION_LOST') {
-    logger.warn('Database connection lost. Attempting to reconnect...');
+  if (err.code === 'PROTOCOL_CONNECTION_LOST' || err.code === 'ECONNRESET') {
+    logger.warn('Database connection lost. Pool will automatically reconnect...');
+    // Don't crash - pool handles reconnection automatically
+  } else if (err.code === 'PROTOCOL_ENQUEUE_AFTER_QUIT') {
+    logger.warn('Database connection closed. Pool will create new connections...');
+  } else {
+    logger.error('Unexpected database pool error:', err);
+    // Log but don't crash - let pool handle it
+  }
+});
+
+// Connection health check - validate connections periodically
+let healthCheckInterval = null;
+
+const startHealthCheck = () => {
+  // Clear any existing interval
+  if (healthCheckInterval) {
+    clearInterval(healthCheckInterval);
+  }
+
+  // Run health check every 5 minutes
+  healthCheckInterval = setInterval(async () => {
+    try {
+      const connection = await pool.getConnection();
+      await connection.query('SELECT 1');
+      connection.release();
+      logger.debug('✅ Database connection health check passed');
+    } catch (error) {
+      logger.warn('⚠️ Database health check failed:', error.message);
+      // Don't crash - just log the warning
+      // Pool will handle reconnection automatically
+    }
+  }, 5 * 60 * 1000); // Every 5 minutes
+};
+
+// Start health check
+startHealthCheck();
+
+// Cleanup on process exit
+process.on('SIGTERM', () => {
+  if (healthCheckInterval) {
+    clearInterval(healthCheckInterval);
+  }
+});
+
+process.on('SIGINT', () => {
+  if (healthCheckInterval) {
+    clearInterval(healthCheckInterval);
   }
 });
 
@@ -173,6 +219,29 @@ const query = async (sql, params = []) => {
     }
   } catch (error) {
     const duration = Date.now() - startTime;
+    
+    // Handle connection errors gracefully - don't crash
+    if (error.code === 'PROTOCOL_CONNECTION_LOST' || 
+        error.code === 'ECONNRESET' ||
+        error.code === 'ETIMEDOUT' ||
+        error.code === 'ENOTFOUND') {
+      logger.error(`Database connection error after ${duration}ms:`, {
+        message: error.message,
+        code: error.code,
+        sql: sql.substring(0, 200)
+      });
+      // Retry once for connection errors
+      try {
+        logger.info('Retrying query after connection error...');
+        const [results, fields] = await pool.execute(sql, params);
+        logger.info('Query succeeded on retry');
+        return results;
+      } catch (retryError) {
+        logger.error('Query retry failed:', retryError.message);
+        throw new Error(`Database connection error: ${error.message}. Please try again.`);
+      }
+    }
+    
     logger.error(`Database query error after ${duration}ms:`, {
       message: error.message,
       code: error.code,
