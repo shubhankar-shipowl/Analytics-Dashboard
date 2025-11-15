@@ -1,5 +1,24 @@
 // API configuration
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5009/api';
+// For VPS: Use environment variable, fallback to VPS URL if on VPS
+const getAPIBaseURL = () => {
+  // Check if we're on VPS (window.location will be available in browser)
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+    // If accessing via VPS domain, use VPS backend URL
+    if (hostname.includes('srv512766.hstgr.cloud') || hostname.includes('hstgr.cloud')) {
+      return process.env.REACT_APP_API_URL || 'http://srv512766.hstgr.cloud:5009/api';
+    }
+  }
+  // Use environment variable or fallback to localhost
+  return process.env.REACT_APP_API_URL || 'http://localhost:5009/api';
+};
+
+const API_BASE_URL = getAPIBaseURL();
+
+// Log API URL for debugging (only in development)
+if (process.env.NODE_ENV === 'development') {
+  console.log('🔗 API Base URL:', API_BASE_URL);
+}
 
 // Create a fetch with timeout
 const fetchWithTimeout = (url, options = {}, timeout = 10000) => {

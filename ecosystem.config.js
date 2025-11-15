@@ -171,7 +171,7 @@ module.exports = {
       env: {
         NODE_ENV: 'development',
         PORT: 3006,
-        REACT_APP_API_URL: 'http://localhost:5009/api',
+        REACT_APP_API_URL: 'http://srv512766.hstgr.cloud:5009/api',
         BROWSER: 'none',
         NODE_OPTIONS: '--no-deprecation --max-old-space-size=2048',
       },

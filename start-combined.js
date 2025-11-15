@@ -13,8 +13,18 @@ const os = require('os');
 process.env.NODE_ENV = process.env.NODE_ENV || 'development';
 process.env.PORT = process.env.PORT || '5009';
 const frontendPort = process.env.FRONTEND_PORT || '3006';
-process.env.REACT_APP_API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5009/api';
+
+// CRITICAL: Set REACT_APP_API_URL for frontend
+// For VPS: Use the VPS URL, for local: use localhost
+// Check if we're in production or if VPS URL is set
+const isVPS = process.env.REACT_APP_API_URL && process.env.REACT_APP_API_URL.includes('srv512766.hstgr.cloud');
+const defaultAPIUrl = isVPS 
+  ? 'http://srv512766.hstgr.cloud:5009/api'
+  : (process.env.REACT_APP_API_URL || 'http://localhost:5009/api');
+
+process.env.REACT_APP_API_URL = defaultAPIUrl;
 process.env.BROWSER = 'none'; // Don't auto-open browser
+
 // Suppress deprecation warnings if not already set
 if (!process.env.NODE_OPTIONS) {
   process.env.NODE_OPTIONS = '--no-deprecation';
@@ -50,7 +60,9 @@ console.log(`   Frontend:       http://${serverIP}:${frontendPort}`);
 console.log(`   API Docs:       http://localhost:${process.env.PORT}/api-docs`);
 console.log('');
 console.log('🌐 If using Nginx:');
-console.log(`   Frontend:       https://your-domain.com (or http://your-domain.com)`);
+console.log(
+  `   Frontend:       https://your-domain.com (or http://your-domain.com)`,
+);
 console.log(`   Backend API:    https://your-domain.com/api`);
 console.log(`   API Docs:       https://your-domain.com/api-docs`);
 console.log('');
@@ -63,7 +75,7 @@ const isWindows = process.platform === 'win32';
 // Start backend - use npm start (PM2 handles restarts, so nodemon not needed)
 const backendPath = path.join(__dirname, 'backend');
 // Always use npm start for PM2 (no nodemon needed - PM2 handles restarts)
-const backendCmd = isWindows 
+const backendCmd = isWindows
   ? `cd /d "${backendPath}" && npm start`
   : `cd "${backendPath}" && npm start`;
 
@@ -71,7 +83,11 @@ const backend = spawn(backendCmd, [], {
   cwd: __dirname,
   stdio: ['ignore', 'pipe', 'pipe'], // Pipe stdout and stderr
   shell: true,
-  env: { ...process.env, PORT: '5009', NODE_OPTIONS: process.env.NODE_OPTIONS || '--no-deprecation' }
+  env: {
+    ...process.env,
+    PORT: '5009',
+    NODE_OPTIONS: process.env.NODE_OPTIONS || '--no-deprecation',
+  },
 });
 
 // Pipe backend output
@@ -83,19 +99,38 @@ backend.stderr.on('data', (data) => {
 });
 
 // Start frontend
+// CRITICAL: Pass REACT_APP_API_URL explicitly to ensure React gets it
 const frontendCmd = 'npm run frontend:dev';
+const frontendEnv = {
+  ...process.env,
+  PORT: frontendPort,
+  NODE_OPTIONS: process.env.NODE_OPTIONS || '--no-deprecation',
+  REACT_APP_API_URL: process.env.REACT_APP_API_URL, // Explicitly pass to React
+  BROWSER: 'none'
+};
+
+console.log(`🔧 Frontend Environment:`);
+console.log(`   REACT_APP_API_URL: ${frontendEnv.REACT_APP_API_URL}`);
+console.log(`   PORT: ${frontendEnv.PORT}`);
+console.log('');
+
 const frontend = spawn(frontendCmd, [], {
   cwd: __dirname,
   stdio: ['ignore', 'pipe', 'pipe'], // Pipe stdout and stderr
   shell: true,
-  env: { ...process.env, PORT: frontendPort, NODE_OPTIONS: process.env.NODE_OPTIONS || '--no-deprecation' }
+  env: frontendEnv
 });
 
 // Pipe frontend output
 frontend.stdout.on('data', (data) => {
   const output = data.toString().trim();
   // Only log important frontend messages
-  if (output.includes('Compiled') || output.includes('Local:') || output.includes('error') || output.includes('Error')) {
+  if (
+    output.includes('Compiled') ||
+    output.includes('Local:') ||
+    output.includes('error') ||
+    output.includes('Error')
+  ) {
     console.log(`[frontend] ${output}`);
   }
 });
@@ -164,4 +199,3 @@ process.on('SIGINT', () => {
 
 // Keep process alive
 process.stdin.resume();
-
