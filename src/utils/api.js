@@ -66,27 +66,27 @@ const apiCall = async (endpoint, options = {}, retries = 2) => {
   const timeout = endpoint === '/health' ? 5000 : 10000;
 
   for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
+  try {
       const response = await fetchWithTimeout(url, config, timeout);
-      
-      // Check if response is ok before trying to parse JSON
-      if (!response.ok) {
-        // Try to get error message from response
-        let errorMessage = `API request failed with status ${response.status}`;
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.error?.message || errorData.error || errorMessage;
-        } catch (e) {
-          // If JSON parsing fails, use status text
-          errorMessage = response.statusText || errorMessage;
-        }
-        throw new Error(errorMessage);
+    
+    // Check if response is ok before trying to parse JSON
+    if (!response.ok) {
+      // Try to get error message from response
+      let errorMessage = `API request failed with status ${response.status}`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error?.message || errorData.error || errorMessage;
+      } catch (e) {
+        // If JSON parsing fails, use status text
+        errorMessage = response.statusText || errorMessage;
       }
-      
-      const data = await response.json();
-      return data;
-    } catch (error) {
-      // Enhanced error logging
+      throw new Error(errorMessage);
+    }
+    
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    // Enhanced error logging
       if (error.name === 'TypeError' && error.message.includes('fetch') || 
           error.message.includes('timeout') ||
           error.message.includes('Failed to fetch')) {
@@ -111,11 +111,11 @@ const apiCall = async (endpoint, options = {}, retries = 2) => {
           `3. If using Nginx, check Nginx is running and configured correctly\n` +
           `4. Check firewall settings if accessing remotely`
         );
-      }
+    }
       
       // For other errors, don't retry
-      console.error('API Error:', error);
-      throw error;
+    console.error('API Error:', error);
+    throw error;
     }
   }
 };

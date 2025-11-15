@@ -106,7 +106,13 @@ function App() {
   const getDateFilters = React.useCallback(() => {
     const filters = {};
     
-    if (dateFilter !== 'Lifetime') {
+    // CRITICAL: When "Lifetime" is selected, explicitly mark it so backend knows to return ALL data
+    // The backend has a 90-day default for performance, but we need to bypass it for Lifetime
+    if (dateFilter === 'Lifetime') {
+      filters.lifetime = true;
+      filters.allData = true; // Explicit flag for backend
+      console.log('📅 Lifetime filter: Will request ALL data from database');
+    } else if (dateFilter !== 'Lifetime') {
       if (dateFilter === 'Custom' && customStartDate && customEndDate) {
         // Ensure custom dates are in YYYY-MM-DD format
         filters.startDate = customStartDate.includes('T') ? customStartDate.split('T')[0] : customStartDate;
@@ -337,8 +343,14 @@ function App() {
   const buildFilters = React.useCallback(() => {
     const filters = {};
     
-    // Date filters
-    if (dateFilter !== 'Lifetime') {
+    // CRITICAL: When "Lifetime" is selected, explicitly mark it so backend knows to return ALL data
+    // The backend has a 90-day default for performance, but we need to bypass it for Lifetime
+    if (dateFilter === 'Lifetime') {
+      filters.lifetime = true;
+      filters.allData = true; // Explicit flag for backend
+      console.log('📅 buildFilters - Lifetime filter: Will request ALL data from database');
+    } else if (dateFilter !== 'Lifetime') {
+      // Date filters
       if (dateFilter === 'Custom' && customStartDate && customEndDate) {
         // Ensure custom dates are in YYYY-MM-DD format
         filters.startDate = customStartDate.includes('T') ? customStartDate.split('T')[0] : customStartDate;

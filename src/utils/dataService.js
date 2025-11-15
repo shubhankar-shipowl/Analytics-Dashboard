@@ -69,6 +69,14 @@ export const loadData = async (forceRefresh = false, filters = {}) => {
     // Build query parameters for date filtering
     const queryParams = { limit: 1000000 };
     
+    // CRITICAL: When "Lifetime" is selected, explicitly set allData=true to bypass 90-day default
+    // The backend applies a 90-day default when no filters are provided for performance
+    // But for "Lifetime", we want ALL data, so we need to explicitly tell the backend
+    if (filters.lifetime === true || filters.allData === true) {
+      queryParams.allData = 'true';
+      console.log('  ✓ Lifetime filter: Requesting ALL data (bypassing 90-day default)');
+    }
+    
     // Add date filters if provided (only if not empty)
     if (filters.startDate && filters.startDate.trim() !== '') {
       queryParams.startDate = filters.startDate;

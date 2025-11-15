@@ -102,6 +102,48 @@ create_directories() {
     print_success "Directories created"
 }
 
+# Function to check and free ports
+check_ports() {
+    print_info "Checking ports 5009 (backend) and 3006 (frontend)..."
+    
+    # Check port 5009
+    if lsof -i :5009 > /dev/null 2>&1; then
+        print_warning "Port 5009 is in use!"
+        PIDS=$(lsof -ti :5009)
+        if [ ! -z "$PIDS" ]; then
+            print_info "Killing process(es) on port 5009: $PIDS"
+            echo "$PIDS" | xargs kill -9 2>/dev/null
+            sleep 1
+            if ! lsof -i :5009 > /dev/null 2>&1; then
+                print_success "Port 5009 is now free"
+            else
+                print_error "Failed to free port 5009"
+            fi
+        fi
+    else
+        print_success "Port 5009 is free"
+    fi
+    
+    # Check port 3006
+    if lsof -i :3006 > /dev/null 2>&1; then
+        print_warning "Port 3006 is in use!"
+        PIDS=$(lsof -ti :3006)
+        if [ ! -z "$PIDS" ]; then
+            print_info "Killing process(es) on port 3006: $PIDS"
+            echo "$PIDS" | xargs kill -9 2>/dev/null
+            sleep 1
+            if ! lsof -i :3006 > /dev/null 2>&1; then
+                print_success "Port 3006 is now free"
+            else
+                print_error "Failed to free port 3006"
+            fi
+        fi
+    else
+        print_success "Port 3006 is free"
+    fi
+    echo ""
+}
+
 # Function to check if process is already running
 check_running() {
     if pm2 list | grep -q "dashboard"; then
@@ -113,8 +155,12 @@ check_running() {
         read -p "Do you want to restart it? (y/n) " -n 1 -r
         echo ""
         if [[ $REPLY =~ ^[Yy]$ ]]; then
+            print_info "Stopping existing process..."
+            pm2 stop dashboard
+            pm2 delete dashboard
+            check_ports  # Free ports before restarting
             print_info "Restarting dashboard..."
-            pm2 restart dashboard --update-env
+            pm2 restart dashboard --update-env 2>/dev/null || pm2 start ecosystem.config.js --only dashboard --env production
             pm2 save
             print_success "Dashboard restarted!"
             show_status
@@ -138,6 +184,9 @@ start_app() {
     
     # Check dependencies
     check_dependencies
+    
+    # Check and free ports
+    check_ports
     
     # Check if already running
     check_running

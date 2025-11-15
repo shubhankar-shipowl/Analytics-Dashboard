@@ -249,17 +249,23 @@ class Order {
       
       // Add default date filter if no filters provided to avoid full table scan
       // Only fetch last 90 days by default if no date filter
+      // BUT: If allData=true or lifetime=true, skip the default and return ALL data
       const hasDateFilter = filters.startDate || filters.endDate;
       const hasAnyFilter = hasDateFilter || filters.product || filters.products || 
                           filters.pincode || filters.status || filters.order_id;
+      const isLifetimeRequest = filters.allData === true || filters.allData === 'true' || 
+                                filters.lifetime === true || filters.lifetime === 'true';
       
-      if (!hasAnyFilter) {
+      if (!hasAnyFilter && !isLifetimeRequest) {
         // Default: Only fetch recent orders (last 90 days) to avoid slow full table scan
+        // BUT: Skip this if explicitly requesting all data (Lifetime filter)
         const defaultStartDate = new Date();
         defaultStartDate.setDate(defaultStartDate.getDate() - 90);
         sql += ' AND order_date >= ?';
         params.push(defaultStartDate.toISOString().split('T')[0]);
         logger.debug('No filters provided, using default 90-day date range for performance');
+      } else if (isLifetimeRequest) {
+        logger.info('Lifetime filter requested: Returning ALL data (bypassing 90-day default)');
       }
 
       if (filters.startDate) {

@@ -61,22 +61,30 @@ const buildDateFilters = (whereClause, params, startDate, endDate) => {
 // KPIs endpoint - cache for 2 minutes (frequently accessed, but data changes)
 router.get('/kpis', cacheMiddleware(120), async (req, res) => {
   try {
-    const { startDate, endDate, product, products, pincode } = req.query;
+    const { startDate, endDate, product, products, pincode, allData, lifetime } = req.query;
 
     let whereClause = 'WHERE 1=1';
     const params = [];
 
-    if (startDate) {
-      // Optimize: Avoid DATE() function on column for better index usage
-      whereClause += ' AND order_date >= ?';
-      params.push(startDate);
-    }
-    if (endDate) {
-      // Optimize: Use < next day for better index usage
-      const nextDay = new Date(endDate);
-      nextDay.setDate(nextDay.getDate() + 1);
-      whereClause += ' AND order_date < ?';
-      params.push(nextDay.toISOString().split('T')[0]);
+    // CRITICAL: Only apply date filters if NOT a lifetime request
+    // Lifetime requests should include ALL data regardless of date
+    const isLifetimeRequest = allData === 'true' || lifetime === 'true';
+    
+    if (!isLifetimeRequest) {
+      if (startDate) {
+        // Optimize: Avoid DATE() function on column for better index usage
+        whereClause += ' AND order_date >= ?';
+        params.push(startDate);
+      }
+      if (endDate) {
+        // Optimize: Use < next day for better index usage
+        const nextDay = new Date(endDate);
+        nextDay.setDate(nextDay.getDate() + 1);
+        whereClause += ' AND order_date < ?';
+        params.push(nextDay.toISOString().split('T')[0]);
+      }
+    } else {
+      logger.info('📅 Analytics KPIs - Lifetime filter: Including ALL data (no date filter)');
     }
     if (product) {
       whereClause += ' AND product_name LIKE ?';

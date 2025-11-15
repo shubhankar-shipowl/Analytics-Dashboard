@@ -88,6 +88,11 @@ router.get('/', async (req, res) => {
     const safeOffset = Math.max(parseInt(offset) || 0, 0);
 
     const filters = {};
+    // CRITICAL: Check for allData/lifetime flag to bypass 90-day default
+    if (req.query.allData === 'true' || req.query.lifetime === 'true') {
+      filters.allData = true;
+      logger.info('📅 Orders API - Lifetime filter: Will return ALL data (bypassing 90-day default)');
+    }
     if (startDate) {
       filters.startDate = startDate;
       logger.info(`📅 Orders API - Received startDate filter: ${startDate}`);
