@@ -157,53 +157,138 @@ For production environments, we recommend using PM2 (Process Manager 2) for proc
 npm install -g pm2
 ```
 
-### Start with PM2
+### Quick Start with Shell Script (Recommended)
 
-**Development Mode:**
-```bash
-npm run pm2:start
-```
-
-**Production Mode:**
-```bash
-npm run pm2:start:prod
-```
-
-### PM2 Management Commands
+We provide a convenient shell script for managing the application with PM2:
 
 ```bash
-npm run pm2:status    # View process status
-npm run pm2:logs      # View logs
-npm run pm2:monit     # Real-time monitoring
-npm run pm2:stop      # Stop all processes
-npm run pm2:restart   # Restart all processes
-npm run pm2:delete    # Delete all processes
+# Make the script executable (first time only)
+chmod +x pm2-manager.sh
+
+# Start the application
+./pm2-manager.sh start          # Development mode
+./pm2-manager.sh start prod     # Production mode
+
+# Manage the application
+./pm2-manager.sh stop           # Stop the application
+./pm2-manager.sh restart        # Restart (development)
+./pm2-manager.sh restart prod   # Restart (production)
+./pm2-manager.sh status         # Show status
+./pm2-manager.sh logs           # Show logs (last 50 lines)
+./pm2-manager.sh logs 100       # Show last 100 lines
+./pm2-manager.sh monitor        # Open PM2 monitor
+./pm2-manager.sh delete         # Remove from PM2
+./pm2-manager.sh startup        # Setup auto-start on boot
+./pm2-manager.sh help           # Show help
 ```
 
-### Auto-Start on System Boot
+### Using NPM Scripts
 
-To make the application start automatically when the system reboots:
+**Start with PM2:**
+```bash
+npm run pm2:start          # Development mode
+npm run pm2:start:prod     # Production mode
+```
+
+**PM2 Management Commands:**
+```bash
+npm run pm2:status         # View status
+npm run pm2:logs           # View logs
+npm run pm2:monit          # Real-time monitoring
+npm run pm2:stop           # Stop application
+npm run pm2:restart        # Restart application
+npm run pm2:delete         # Delete from PM2
+npm run pm2:startup       # Setup auto-start on boot
+npm run pm2:save           # Save current processes
+```
+
+### Direct PM2 Commands
 
 ```bash
-npm run pm2:startup
-npm run pm2:save
+pm2 start ecosystem.config.js --only dashboard
+pm2 stop dashboard
+pm2 restart dashboard
+pm2 logs dashboard
+pm2 monit
+pm2 status
 ```
 
-For detailed PM2 documentation, see [PM2_GUIDE.md](./PM2_GUIDE.md).
+## Nginx Reverse Proxy Setup
 
-### Alternative: Using Script Files
+For production deployments, we recommend using Nginx as a reverse proxy in front of your application. This provides:
 
-You can also use the provided script files:
+- SSL/TLS encryption
+- Better performance and caching
+- Rate limiting and security
+- Single port access (80/443)
 
-**Windows (PowerShell):**
-```powershell
-.\start-all.ps1
+### Quick Setup
+
+1. **Install Nginx:**
+```bash
+sudo apt install nginx -y  # Ubuntu/Debian
+sudo yum install nginx -y   # CentOS/RHEL
 ```
 
-**Windows (Command Prompt):**
-```cmd
-start-all.bat
+2. **Copy Configuration:**
+```bash
+sudo cp nginx.conf /etc/nginx/sites-available/analytics-dashboard
+sudo ln -s /etc/nginx/sites-available/analytics-dashboard /etc/nginx/sites-enabled/
 ```
+
+3. **Update Configuration:**
+   - Edit `/etc/nginx/sites-available/analytics-dashboard`
+   - Replace `your-domain.com` with your actual domain
+   - Update SSL certificate paths if needed
+
+4. **Test and Reload:**
+```bash
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+5. **Setup SSL (Let's Encrypt):**
+```bash
+sudo apt install certbot python3-certbot-nginx -y
+sudo certbot --nginx -d your-domain.com
+```
+
+For detailed Nginx setup instructions, see [NGINX_SETUP.md](./NGINX_SETUP.md).
+
+## Port Information
+
+The application displays comprehensive port information when starting. You can also check ports anytime using:
+
+```bash
+# Show all port information
+./show-ports.sh
+```
+
+This script shows:
+- PM2 process status
+- Nginx status (if installed)
+- Backend port (5009) status and URLs
+- Frontend port (3006) status and URLs
+- Nginx URLs (if configured)
+- Quick command reference
+
+### Port Information Display
+
+When you start the application, you'll see:
+
+**With PM2 (`./start.sh` or `npm run pm2:start`):**
+- Backend port: 5009
+- Frontend port: 3006
+- Local and network access URLs
+- Nginx access URLs (if configured)
+
+**With npm (`npm run dev`):**
+- Same port information displayed in console
+- Backend and frontend startup messages show ports
+
+**Backend Server Logs:**
+- Shows port, environment, and all access URLs
+- Displays both direct access and Nginx URLs
 
 ### Build for Production
 
@@ -224,35 +309,26 @@ npm test
 ## Project Structure
 
 ```
-Dashboard/
-├── public/
-│   ├── data/
-│   │   └── ForwardOrders-1762582722-21819 (1).xlsx
-│   └── index.html
+Analytics-Dashboard/
+├── backend/
+│   ├── config/          # Database and Swagger configuration
+│   ├── database/        # SQL schema files
+│   ├── middleware/      # Cache and rate limiting middleware
+│   ├── models/          # Data models
+│   ├── routes/          # API routes
+│   ├── scripts/        # Utility scripts (import, clear data)
+│   ├── utils/          # Helper utilities
+│   └── server.js       # Main backend server
 ├── src/
-│   ├── components/
-│   │   ├── Chart.css
-│   │   ├── Filters.css
-│   │   ├── Filters.js
-│   │   ├── FulfillmentPartnerChart.js
-│   │   ├── KPICard.css
-│   │   ├── KPICard.js
-│   │   ├── KPISection.css
-│   │   ├── KPISection.js
-│   │   ├── OrderStatusChart.js
-│   │   ├── PaymentMethodChart.js
-│   │   ├── PriceRangeChart.js
-│   │   ├── TopCitiesChart.js
-│   │   ├── TopProductsChart.js
-│   │   └── TrendChart.js
-│   ├── utils/
-│   │   └── dataProcessor.js
-│   ├── app.css
-│   ├── app.js
-│   └── index.js
-├── .gitignore
+│   ├── components/     # React components (charts, filters, etc.)
+│   ├── utils/          # Frontend utilities (API, data processing)
+│   ├── app.js          # Main React app
+│   └── index.js        # React entry point
+├── public/             # Static files
+├── ecosystem.config.js # PM2 configuration
+├── start-combined.js   # Combined start script for PM2
+├── start-frontend.js   # Frontend start wrapper
 ├── package.json
-├── package-lock.json
 └── README.md
 ```
 

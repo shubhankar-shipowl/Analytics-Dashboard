@@ -7,6 +7,7 @@
 
 const { spawn } = require('child_process');
 const path = require('path');
+const os = require('os');
 
 // Set environment variables
 process.env.NODE_ENV = process.env.NODE_ENV || 'development';
@@ -19,10 +20,42 @@ if (!process.env.NODE_OPTIONS) {
   process.env.NODE_OPTIONS = '--no-deprecation';
 }
 
-console.log('🚀 Starting Dashboard (Backend + Frontend)...');
+// Get server IP address
+const networkInterfaces = os.networkInterfaces();
+let serverIP = 'localhost';
+for (const interfaceName in networkInterfaces) {
+  const interfaces = networkInterfaces[interfaceName];
+  for (const iface of interfaces) {
+    if (iface.family === 'IPv4' && !iface.internal) {
+      serverIP = iface.address;
+      break;
+    }
+  }
+  if (serverIP !== 'localhost') break;
+}
+
+console.log('');
+console.log('═══════════════════════════════════════════════════════════');
+console.log('🚀 STARTING ANALYTICS DASHBOARD');
+console.log('═══════════════════════════════════════════════════════════');
 console.log(`📊 Environment: ${process.env.NODE_ENV}`);
-console.log(`🔗 Backend: http://localhost:5009`);
-console.log(`🌐 Frontend: http://localhost:${frontendPort}`);
+console.log(`🔌 Backend Port: ${process.env.PORT}`);
+console.log(`🔌 Frontend Port: ${frontendPort}`);
+console.log('');
+console.log('📍 Direct Access URLs:');
+console.log(`   Backend API:    http://localhost:${process.env.PORT}/api`);
+console.log(`   Backend API:    http://${serverIP}:${process.env.PORT}/api`);
+console.log(`   Frontend:       http://localhost:${frontendPort}`);
+console.log(`   Frontend:       http://${serverIP}:${frontendPort}`);
+console.log(`   API Docs:       http://localhost:${process.env.PORT}/api-docs`);
+console.log('');
+console.log('🌐 If using Nginx:');
+console.log(`   Frontend:       https://your-domain.com (or http://your-domain.com)`);
+console.log(`   Backend API:    https://your-domain.com/api`);
+console.log(`   API Docs:       https://your-domain.com/api-docs`);
+console.log('');
+console.log('💡 Note: Replace "your-domain.com" with your actual domain or IP');
+console.log('═══════════════════════════════════════════════════════════');
 console.log('');
 
 const isWindows = process.platform === 'win32';
@@ -60,7 +93,11 @@ const frontend = spawn(frontendCmd, [], {
 
 // Pipe frontend output
 frontend.stdout.on('data', (data) => {
-  console.log(`[frontend] ${data.toString().trim()}`);
+  const output = data.toString().trim();
+  // Only log important frontend messages
+  if (output.includes('Compiled') || output.includes('Local:') || output.includes('error') || output.includes('Error')) {
+    console.log(`[frontend] ${output}`);
+  }
 });
 frontend.stderr.on('data', (data) => {
   console.error(`[frontend] ${data.toString().trim()}`);
@@ -127,3 +164,4 @@ process.on('SIGINT', () => {
 
 // Keep process alive
 process.stdin.resume();
+

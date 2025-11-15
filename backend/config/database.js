@@ -22,7 +22,7 @@ const connectionConfig = {
   password: dbPassword,
   database: process.env.DB_NAME || 'dashboard_db',
   waitForConnections: true,
-  connectionLimit: parseInt(process.env.DB_POOL_SIZE) || 20, // Increased from 10 to 20 for better concurrency
+  connectionLimit: parseInt(process.env.DB_POOL_SIZE) || 30, // Optimized: Increased for VPS production
   queueLimit: 0,
   enableKeepAlive: true,
   keepAliveInitialDelay: 0,
@@ -41,7 +41,11 @@ const connectionConfig = {
   // Optimize: Enable connection compression for large queries
   compress: true,
   // Optimize: Use prepared statements cache
-  typeCast: true
+  typeCast: true,
+  // Optimize: Add query timeout (30 seconds)
+  timeout: 30000,
+  // Optimize: Enable connection reuse
+  reuseConnection: true
 };
 
 // Create MySQL connection pool
@@ -129,13 +133,27 @@ const testConnection = async (retries = 3, delay = 2000) => {
   return false;
 };
 
-// Execute query helper function with logging
+// Execute query helper function with logging and performance monitoring
 const query = async (sql, params = []) => {
   const startTime = Date.now();
+  const SLOW_QUERY_THRESHOLD = 1000; // 1 second
+  
   try {
-    logger.debug(`Executing query: ${sql.substring(0, 100)}${sql.length > 100 ? '...' : ''}`, params.length > 0 ? `Params: ${params.length} items` : '');
-    const [results, fields] = await pool.execute(sql, params);
+    // Use Promise.race to add query timeout
+    const queryPromise = pool.execute(sql, params);
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Query timeout after 30 seconds')), 30000)
+    );
+    
+    const [results, fields] = await Promise.race([queryPromise, timeoutPromise]);
     const duration = Date.now() - startTime;
+    
+    // Log slow queries
+    if (duration > SLOW_QUERY_THRESHOLD) {
+      logger.warn(`🐌 Slow Query Detected (${duration}ms): ${sql.substring(0, 150)}${sql.length > 150 ? '...' : ''}`);
+    } else {
+      logger.debug(`Executing query: ${sql.substring(0, 100)}${sql.length > 100 ? '...' : ''}`, params.length > 0 ? `Params: ${params.length} items` : '');
+    }
     
     // For INSERT/UPDATE/DELETE, results contains affectedRows and insertId
     // For SELECT, results is an array of rows

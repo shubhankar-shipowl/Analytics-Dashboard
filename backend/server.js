@@ -25,7 +25,7 @@ const analyticsRoutes = require('./routes/analytics');
 const importRoutes = require('./routes/import');
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5009; // Default to 5009 to avoid conflicts
 
 // Request logging middleware
 app.use((req, res, next) => {
@@ -255,12 +255,44 @@ const startServer = async () => {
       // Continue anyway - tables might already exist
     }
     
-    app.listen(PORT, () => {
-      logger.info(`🚀 Server running on port ${PORT}`);
+    app.listen(PORT, '0.0.0.0', () => {
+      const os = require('os');
+      const networkInterfaces = os.networkInterfaces();
+      let serverIP = 'localhost';
+      
+      // Get server IP address
+      for (const interfaceName in networkInterfaces) {
+        const interfaces = networkInterfaces[interfaceName];
+        for (const iface of interfaces) {
+          if (iface.family === 'IPv4' && !iface.internal) {
+            serverIP = iface.address;
+            break;
+          }
+        }
+        if (serverIP !== 'localhost') break;
+      }
+      
+      logger.info('');
+      logger.info('═══════════════════════════════════════════════════════════');
+      logger.info('🚀 BACKEND SERVER STARTED SUCCESSFULLY');
+      logger.info('═══════════════════════════════════════════════════════════');
       logger.info(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
-      logger.info(`🔗 API URL: http://localhost:${PORT}/api`);
-      logger.info(`📚 Swagger UI: http://localhost:${PORT}/api-docs`);
+      logger.info(`🔌 Server Port: ${PORT}`);
+      logger.info('');
+      logger.info('📍 Access URLs:');
+      logger.info(`   Local:    http://localhost:${PORT}/api`);
+      logger.info(`   Network:  http://${serverIP}:${PORT}/api`);
+      logger.info(`   Health:   http://localhost:${PORT}/api/health`);
+      logger.info(`   Swagger:  http://localhost:${PORT}/api-docs`);
+      logger.info('');
+      logger.info('🌐 If using Nginx:');
+      logger.info(`   API:      https://your-domain.com/api (or http://your-domain.com/api)`);
+      logger.info(`   Health:   https://your-domain.com/api/health`);
+      logger.info(`   Swagger:  https://your-domain.com/api-docs`);
+      logger.info('');
       logger.info(`📝 Logs directory: ${require('path').join(__dirname, 'logs')}`);
+      logger.info('═══════════════════════════════════════════════════════════');
+      logger.info('');
     });
   } catch (error) {
     logger.error('Failed to start server:', error);

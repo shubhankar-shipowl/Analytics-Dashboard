@@ -811,23 +811,75 @@ function App() {
     );
   }
 
+  // Retry function to reload data
+  const handleRetry = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      // Force refresh backend check
+      refreshBackendCheck();
+      const dateFilters = getDateFilters();
+      const loadedData = await loadData(true, dateFilters); // Force refresh
+      setData(loadedData);
+      setBackendConnected(isUsingBackend());
+      setLoading(false);
+    } catch (err) {
+      setError(err.message);
+      setBackendConnected(isUsingBackend());
+      setLoading(false);
+    }
+  };
+
   if (error) {
-    const isBackendError = error.includes('database') || error.includes('MySQL') || error.includes('backend');
+    const isBackendError = error.includes('database') || error.includes('MySQL') || error.includes('backend') || error.includes('Cannot connect');
+    const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5009/api';
+    const baseUrl = apiUrl.replace('/api', '');
     
     return (
       <div className="error-container">
-        <h2>Error Loading Data</h2>
-        <p style={{ whiteSpace: 'pre-line', textAlign: 'left', maxWidth: '600px', margin: '0 auto' }}>{error}</p>
+        <h2 style={{ color: '#dc3545' }}>Error Loading Data</h2>
+        <p style={{ whiteSpace: 'pre-line', textAlign: 'left', maxWidth: '600px', margin: '20px auto', padding: '15px', backgroundColor: '#f8d7da', borderRadius: '4px', color: '#721c24' }}>
+          {error}
+        </p>
+        
+        {/* Retry Button */}
+        <div style={{ marginTop: '20px', marginBottom: '20px' }}>
+          <button
+            onClick={handleRetry}
+            style={{
+              padding: '12px 24px',
+              fontSize: '16px',
+              backgroundColor: '#007bff',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontWeight: 'bold'
+            }}
+            onMouseOver={(e) => e.target.style.backgroundColor = '#0056b3'}
+            onMouseOut={(e) => e.target.style.backgroundColor = '#007bff'}
+          >
+            🔄 Retry Connection
+          </button>
+        </div>
         
         {isBackendError ? (
           <div style={{ marginTop: '20px', padding: '15px', backgroundColor: '#fff3cd', borderRadius: '4px', maxWidth: '600px', margin: '20px auto' }}>
             <h3 style={{ marginTop: 0, color: '#856404' }}>Troubleshooting Steps:</h3>
             <ol style={{ textAlign: 'left', color: '#856404' }}>
-              <li>Check if backend server is running: <code>npm run dev</code> or <code>cd backend && npm start</code></li>
-              <li>Verify backend is accessible at: <code>http://localhost:5009/api/health</code></li>
-              <li>Check database connection in <code>backend/.env</code></li>
-              <li>Ensure MySQL database is running and accessible</li>
-              <li>If database is empty, upload data using the upload section</li>
+              <li><strong>Check if backend server is running:</strong>
+                <ul style={{ marginTop: '5px', marginBottom: '10px' }}>
+                  <li>With PM2: <code>./start.sh</code> or <code>pm2 start ecosystem.config.js --only dashboard</code></li>
+                  <li>With npm: <code>npm run dev</code> or <code>cd backend && npm start</code></li>
+                  <li>Check status: <code>pm2 status</code> or <code>./show-ports.sh</code></li>
+                </ul>
+              </li>
+              <li><strong>Verify backend is accessible:</strong> <code>{baseUrl}/api/health</code></li>
+              <li><strong>Check port status:</strong> Run <code>./show-ports.sh</code> on the server</li>
+              <li><strong>Check database connection:</strong> Verify <code>backend/.env</code> has correct MySQL credentials</li>
+              <li><strong>Ensure MySQL database is running and accessible</strong></li>
+              <li><strong>If using Nginx:</strong> Check Nginx is running: <code>sudo systemctl status nginx</code></li>
+              <li><strong>If database is empty:</strong> Upload data using the upload section</li>
             </ol>
           </div>
         ) : (

@@ -9,23 +9,28 @@ const checkBackend = async (forceRefresh = false) => {
   if (backendChecked && !forceRefresh) return useBackend;
   
   try {
+    // Try health check with shorter timeout and retries
     const response = await healthCheck();
     // Backend returns {status: "OK", ...} or {success: true, ...}
     // Accept either format
     if (response && (response.success === true || response.status === 'OK')) {
       useBackend = true;
-      console.log('✅ Backend API connected - using MySQL database');
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5009/api';
+      console.log(`✅ Backend API connected at ${apiUrl.replace('/api', '')} - using MySQL database`);
       backendChecked = true;
       return true;
     } else {
       useBackend = false;
-      console.log('⚠️ Backend health check failed:', response);
+      console.warn('⚠️ Backend health check failed - unexpected response:', response);
       backendChecked = true;
       return false;
     }
   } catch (error) {
     useBackend = false;
-    console.log('⚠️ Backend API not available:', error.message);
+    const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5009/api';
+    const baseUrl = apiUrl.replace('/api', '');
+    console.warn(`⚠️ Backend API not available at ${baseUrl}:`, error.message);
+    console.warn('💡 Make sure backend is running. Check with: pm2 status or ./show-ports.sh');
     backendChecked = true;
     return false;
   }
@@ -46,12 +51,18 @@ export const loadData = async (forceRefresh = false, filters = {}) => {
   const isBackendAvailable = await checkBackend(forceRefresh);
   
   if (!isBackendAvailable) {
+    const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5009/api';
+    const baseUrl = apiUrl.replace('/api', '');
     throw new Error(
-      `Backend server is not available. ` +
+      `Backend server is not available at ${baseUrl}.\n\n` +
       `Please ensure:\n` +
-      `1. Backend server is running (http://localhost:5009)\n` +
-      `2. Database connection is configured correctly\n` +
-      `3. Start the backend server: cd backend && npm start` 
+      `1. Backend server is running:\n` +
+      `   - With PM2: ./start.sh or pm2 start ecosystem.config.js --only dashboard\n` +
+      `   - With npm: cd backend && npm start\n` +
+      `   - Check status: pm2 status or ./show-ports.sh\n` +
+      `2. Backend is accessible at: ${baseUrl}/api/health\n` +
+      `3. Database connection is configured correctly in backend/.env\n` +
+      `4. If using Nginx, ensure Nginx is running and configured properly`
     );
   }
   
@@ -128,14 +139,21 @@ export const loadData = async (forceRefresh = false, filters = {}) => {
     }
   } catch (error) {
     console.error('❌ Error loading from database:', error.message);
+    const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5009/api';
+    const baseUrl = apiUrl.replace('/api', '');
+    
     // Database is the single source of truth - no fallbacks
-    throw new Error(
-      `Failed to fetch data from MySQL database: ${error.message}. ` +
-      `Please ensure:\n` +
-      `1. Backend server is running (http://localhost:5009)\n` +
-      `2. Database connection is configured correctly\n` +
-      `3. Database has data (upload Excel file if needed)`
-    );
+    let errorMessage = `Failed to fetch data from MySQL database: ${error.message}.\n\n`;
+    errorMessage += `Please ensure:\n`;
+    errorMessage += `1. Backend server is running at ${baseUrl}\n`;
+    errorMessage += `   - Check with: pm2 status or ./show-ports.sh\n`;
+    errorMessage += `   - Start with: ./start.sh or cd backend && npm start\n`;
+    errorMessage += `2. Backend is accessible: ${baseUrl}/api/health\n`;
+    errorMessage += `3. Database connection is configured correctly in backend/.env\n`;
+    errorMessage += `4. Database has data (upload Excel file if needed)\n`;
+    errorMessage += `5. If using Nginx, check Nginx configuration and status`;
+    
+    throw new Error(errorMessage);
   }
 };
 

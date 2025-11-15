@@ -1,8 +1,18 @@
 // API configuration
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5009/api';
 
-// Helper function for API calls
-const apiCall = async (endpoint, options = {}) => {
+// Create a fetch with timeout
+const fetchWithTimeout = (url, options = {}, timeout = 10000) => {
+  return Promise.race([
+    fetch(url, options),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`Request timeout after ${timeout}ms`)), timeout)
+    )
+  ]);
+};
+
+// Helper function for API calls with retry logic
+const apiCall = async (endpoint, options = {}, retries = 2) => {
   const url = `${API_BASE_URL}${endpoint}`;
   const config = {
     headers: {
@@ -16,33 +26,61 @@ const apiCall = async (endpoint, options = {}) => {
     config.body = JSON.stringify(options.body);
   }
 
-  try {
-    const response = await fetch(url, config);
-    
-    // Check if response is ok before trying to parse JSON
-    if (!response.ok) {
-      // Try to get error message from response
-      let errorMessage = `API request failed with status ${response.status}`;
-      try {
-        const errorData = await response.json();
-        errorMessage = errorData.error?.message || errorData.error || errorMessage;
-      } catch (e) {
-        // If JSON parsing fails, use status text
-        errorMessage = response.statusText || errorMessage;
+  // Use longer timeout for health checks
+  const timeout = endpoint === '/health' ? 5000 : 10000;
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const response = await fetchWithTimeout(url, config, timeout);
+      
+      // Check if response is ok before trying to parse JSON
+      if (!response.ok) {
+        // Try to get error message from response
+        let errorMessage = `API request failed with status ${response.status}`;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error?.message || errorData.error || errorMessage;
+        } catch (e) {
+          // If JSON parsing fails, use status text
+          errorMessage = response.statusText || errorMessage;
+        }
+        throw new Error(errorMessage);
       }
-      throw new Error(errorMessage);
+      
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      // Enhanced error logging
+      if (error.name === 'TypeError' && error.message.includes('fetch') || 
+          error.message.includes('timeout') ||
+          error.message.includes('Failed to fetch')) {
+        
+        // Only retry on network errors, not on last attempt
+        if (attempt < retries) {
+          console.warn(`⚠️ Connection attempt ${attempt + 1} failed, retrying... (${retries - attempt} attempts left)`);
+          await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1))); // Exponential backoff
+          continue;
+        }
+        
+        const apiUrl = API_BASE_URL.replace('/api', '');
+        console.error('API Error: Network error - Backend server may not be running');
+        console.error(`Attempted URL: ${url}`);
+        console.error(`Backend should be running at: ${apiUrl}`);
+        
+        throw new Error(
+          `Cannot connect to backend server at ${apiUrl}.\n\n` +
+          `Please ensure:\n` +
+          `1. Backend server is running (check with: pm2 status or ./show-ports.sh)\n` +
+          `2. Backend is accessible at: ${apiUrl}\n` +
+          `3. If using Nginx, check Nginx is running and configured correctly\n` +
+          `4. Check firewall settings if accessing remotely`
+        );
+      }
+      
+      // For other errors, don't retry
+      console.error('API Error:', error);
+      throw error;
     }
-    
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    // Enhanced error logging
-    if (error.name === 'TypeError' && error.message.includes('fetch')) {
-      console.error('API Error: Network error - Backend server may not be running:', error.message);
-      throw new Error('Cannot connect to backend server. Please ensure the backend is running on http://localhost:5009');
-    }
-    console.error('API Error:', error);
-    throw error;
   }
 };
 
@@ -241,8 +279,35 @@ export const importAPI = {
   getHistoryById: (id) => apiCall(`/import/history/${id}`)
 };
 
-// Health check
-export const healthCheck = () => apiCall('/health');
+// Health check with shorter timeout (to fail fast)
+export const healthCheck = async () => {
+  const url = `${API_BASE_URL}/health`;
+  try {
+    // Use shorter timeout for health checks (3 seconds) - no retries
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
+    
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+      }
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      throw new Error(`Health check failed with status ${response.status}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      throw new Error('Health check timeout - backend may be slow or not responding');
+    }
+    throw error;
+  }
+};
 
 export default {
   ordersAPI,

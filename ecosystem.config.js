@@ -9,7 +9,7 @@
  *   pm2 stop dashboard                                       # Stop the combined process
  *   pm2 restart dashboard                                    # Restart the combined process
  *   pm2 logs dashboard                                       # View logs
- *   pm2 monit                                                # Monitor processes
+ *   pm2 monit                                               # Monitor processes
  *
  * ALTERNATIVE USAGE (Separate Processes):
  *   pm2 start ecosystem.config.js --only dashboard-backend   # Start only backend
@@ -22,11 +22,15 @@ module.exports = {
     {
       name: 'dashboard',
       script: './start-combined.js',
-      cwd: './',
+
+      // Process Configuration - Optimized for combined backend + frontend
       instances: 1,
       exec_mode: 'fork',
-      watch: false,
-      max_memory_restart: '1500M', // Combined memory limit (1.5GB)
+
+      // Working Directory - Critical for file paths
+      cwd: process.cwd(), // Ensures correct working directory
+
+      // Environment Variables
       env: {
         NODE_ENV: 'development',
         PORT: 5009, // Backend port
@@ -34,7 +38,8 @@ module.exports = {
         // For VPS: Replace 'http://YOUR_VPS_IP' with your actual VPS IP or domain
         // Example: 'http://123.45.67.89' or 'http://yourdomain.com'
         REACT_APP_API_URL: 'http://localhost:5009/api', // Change to your VPS IP for production
-        NODE_OPTIONS: '--no-deprecation', // Suppress Node.js deprecation warnings
+        NODE_OPTIONS: '--no-deprecation --max-old-space-size=2048', // Suppress warnings and increase memory
+        BROWSER: 'none', // Don't auto-open browser
       },
       env_production: {
         NODE_ENV: 'production',
@@ -42,86 +47,198 @@ module.exports = {
         FRONTEND_PORT: 3006, // Frontend port
         // For VPS: Replace with your VPS IP or domain
         REACT_APP_API_URL: 'http://localhost:5009/api', // CHANGE THIS to your VPS IP/domain
-        NODE_OPTIONS: '--no-deprecation', // Suppress Node.js deprecation warnings
+        NODE_OPTIONS: '--no-deprecation --max-old-space-size=2048', // Suppress warnings and increase memory
+        BROWSER: 'none',
       },
-      error_file: './logs/pm2-combined-error.log',
-      out_file: './logs/pm2-combined-out.log',
+
+      // Logging Configuration
       log_file: './logs/pm2-combined.log',
-      time: true,
+      out_file: './logs/pm2-combined-out.log',
+      error_file: './logs/pm2-combined-error.log',
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
       merge_logs: true,
+      time: true,
+
+      // Process Management - Enhanced for VPS Production
+      max_memory_restart: '2G', // Increased for large file processing and React dev server
+      min_uptime: '60s', // Longer minimum uptime for VPS stability
+      max_restarts: 10, // Reduced for VPS - prevent restart loops
+      restart_delay: 5000, // Longer delay between restarts for VPS
       autorestart: true,
-      max_restarts: 10,
-      min_uptime: '10s',
-      restart_delay: 4000,
-      kill_timeout: 10000, // Longer timeout for graceful shutdown of both processes
-      wait_ready: false,
-      listen_timeout: 30000,
+      // VPS Optimization: Add exponential backoff
+      exp_backoff_restart_delay: 100,
+
+      // Health Monitoring
+      watch: false,
+      ignore_watch: [
+        'node_modules',
+        'logs',
+        'build',
+        'dist',
+        '.git',
+        '*.log',
+        'temp',
+        'uploads',
+        'public/data',
+        'backend/logs',
+        'backend/uploads',
+      ],
+
+      // Advanced Process Settings
+      kill_timeout: 10000, // More time for graceful shutdown of both processes
+      listen_timeout: 30000, // More time for app to start listening (React takes longer)
+      wait_ready: false, // Don't wait for ready signal (combined process)
+
+      // Performance Optimizations for VPS
+      source_map_support: false, // Disable for better performance
+      disable_trace: true, // Disable tracing for better performance
+      // VPS: Optimize for production
+      node_args: '--max-old-space-size=2048 --optimize-for-size',
+      interpreter_args: '',
+
+      // Error Handling
+      exp_backoff_restart_delay: 100,
+
+      // Additional PM2 Features
+      pmx: false, // Disable PMX for better performance
+
+      // Instance Variables for debugging
+      instance_var: 'NODE_APP_INSTANCE',
     },
     {
       name: 'dashboard-backend',
       script: './server.js',
       cwd: './backend',
-      instances: 1, // Run single instance (can increase for load balancing)
-      exec_mode: 'fork', // Use 'cluster' for multiple instances
-      watch: false, // Set to true for development auto-reload
-      max_memory_restart: '500M', // Restart if memory exceeds 500MB
+
+      // Process Configuration
+      instances: 1,
+      exec_mode: 'fork',
+
+      // Environment Variables
       env: {
         NODE_ENV: 'development',
         PORT: 5009,
+        NODE_OPTIONS: '--no-deprecation --max-old-space-size=1024',
       },
       env_production: {
         NODE_ENV: 'production',
         PORT: 5009,
+        NODE_OPTIONS: '--no-deprecation --max-old-space-size=1024',
       },
-      error_file: './logs/pm2-backend-error.log',
-      out_file: './logs/pm2-backend-out.log',
-      log_file: './logs/pm2-backend-combined.log',
-      time: true, // Prepend timestamp to logs
-      merge_logs: true,
-      autorestart: true, // Auto-restart on crash
-      max_restarts: 10, // Max restarts in 10 seconds
-      min_uptime: '10s', // Minimum uptime to consider app stable
-      restart_delay: 4000, // Delay between restarts (ms)
-      kill_timeout: 5000, // Time to wait for graceful shutdown
-      wait_ready: false, // Don't wait for ready signal
-      listen_timeout: 10000, // Timeout for listen event
-      shutdown_with_message: true, // Graceful shutdown
-      // Environment variables from .env file
+
+      // Environment File Loading
       env_file: './.env',
+
+      // Logging Configuration
+      log_file: './logs/pm2-backend-combined.log',
+      out_file: './logs/pm2-backend-out.log',
+      error_file: './logs/pm2-backend-error.log',
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+      merge_logs: true,
+      time: true,
+
+      // Process Management
+      max_memory_restart: '1G',
+      min_uptime: '30s',
+      max_restarts: 15,
+      restart_delay: 4000,
+      autorestart: true,
+
+      // Health Monitoring
+      watch: false,
+      ignore_watch: [
+        'node_modules',
+        'logs',
+        'uploads',
+        '*.log',
+        '.git',
+      ],
+
+      // Advanced Process Settings
+      kill_timeout: 5000,
+      listen_timeout: 10000,
+      wait_ready: false,
+      shutdown_with_message: true,
+
+      // Performance Optimizations
+      source_map_support: false,
+      disable_trace: true,
+      pmx: false,
     },
     {
       name: 'dashboard-frontend',
       script: './start-frontend.js',
       cwd: './',
+
+      // Process Configuration
       instances: 1,
       exec_mode: 'fork',
-      watch: false, // Set to true for development
-      max_memory_restart: '1G', // React apps can use more memory
+
+      // Environment Variables
       env: {
         NODE_ENV: 'development',
         PORT: 3006,
         REACT_APP_API_URL: 'http://localhost:5009/api',
-        BROWSER: 'none', // Don't auto-open browser
+        BROWSER: 'none',
+        NODE_OPTIONS: '--no-deprecation --max-old-space-size=2048',
       },
       env_production: {
         NODE_ENV: 'production',
         PORT: 3006,
         REACT_APP_API_URL: 'http://localhost:5009/api',
         BROWSER: 'none',
+        NODE_OPTIONS: '--no-deprecation --max-old-space-size=2048',
       },
-      error_file: './logs/pm2-frontend-error.log',
-      out_file: './logs/pm2-frontend-out.log',
+
+      // Logging Configuration
       log_file: './logs/pm2-frontend-combined.log',
-      time: true,
+      out_file: './logs/pm2-frontend-out.log',
+      error_file: './logs/pm2-frontend-error.log',
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
       merge_logs: true,
-      autorestart: true,
-      max_restarts: 10,
-      min_uptime: '10s',
+      time: true,
+
+      // Process Management
+      max_memory_restart: '2G', // React dev server can use more memory
+      min_uptime: '30s',
+      max_restarts: 15,
       restart_delay: 4000,
+      autorestart: true,
+
+      // Health Monitoring
+      watch: false,
+      ignore_watch: [
+        'node_modules',
+        'logs',
+        'build',
+        '*.log',
+        '.git',
+        'public/data',
+      ],
+
+      // Advanced Process Settings
       kill_timeout: 5000,
-      // Only start frontend if backend is running
-      wait_ready: false,
       listen_timeout: 30000, // React dev server takes longer to start
+      wait_ready: false,
+
+      // Performance Optimizations
+      source_map_support: false,
+      disable_trace: true,
+      pmx: false,
     },
   ],
+
+  // Deployment configuration (optional)
+  deploy: {
+    production: {
+      user: 'root',
+      host: 'YOUR_SERVER_IP',
+      ref: 'origin/master',
+      repo: 'YOUR_REPOSITORY_URL',
+      path: '/var/www/analytics-dashboard',
+      'pre-deploy-local': '',
+      'post-deploy': 'npm install && cd backend && npm install && cd .. && pm2 reload ecosystem.config.js --env production && pm2 save',
+      'pre-setup': 'mkdir -p logs backend/logs temp uploads backend/uploads',
+    },
+  },
 };
