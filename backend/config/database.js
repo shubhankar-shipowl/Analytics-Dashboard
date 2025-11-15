@@ -41,11 +41,9 @@ const connectionConfig = {
   // Optimize: Enable connection compression for large queries
   compress: true,
   // Optimize: Use prepared statements cache
-  typeCast: true,
-  // Optimize: Add query timeout (30 seconds)
-  timeout: 30000,
-  // Optimize: Enable connection reuse
-  reuseConnection: true
+  typeCast: true
+  // Note: timeout and reuseConnection are not valid MySQL2 connection options
+  // Query timeout is handled in the query() function using Promise.race()
 };
 
 // Create MySQL connection pool

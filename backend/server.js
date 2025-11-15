@@ -1,6 +1,6 @@
 /**
  * Backend Server
- * 
+ *
  * ARCHITECTURE: Database-Only
  * - All data is served from MySQL database
  * - Excel files are ONLY used for importing data INTO the database
@@ -30,11 +30,11 @@ const PORT = process.env.PORT || 5009; // Default to 5009 to avoid conflicts
 // Request logging middleware
 app.use((req, res, next) => {
   const startTime = Date.now();
-  
+
   res.on('finish', () => {
     const duration = Date.now() - startTime;
     logger.http(req, res, duration);
-    
+
     // Log to database (async, don't wait) - only if table exists
     try {
       const { query } = require('./config/database');
@@ -47,9 +47,9 @@ app.use((req, res, next) => {
           res.statusCode,
           duration,
           req.ip || req.connection.remoteAddress,
-          req.get('user-agent') || ''
-        ]
-      ).catch(err => {
+          req.get('user-agent') || '',
+        ],
+      ).catch((err) => {
         // Only log if it's not a "table doesn't exist" error
         if (err.code === 'ER_NO_SUCH_TABLE') {
           // Table doesn't exist - try to create it (async, don't block)
@@ -69,52 +69,86 @@ app.use((req, res, next) => {
       }
     }
   });
-  
+
   next();
 });
 
 // Middleware
 // Compression - compress all responses
-app.use(compression({
-  level: 6, // Compression level (1-9, 6 is a good balance)
-  filter: (req, res) => {
-    // Don't compress responses if client doesn't support it
-    if (req.headers['x-no-compression']) {
-      return false;
-    }
-    // Use compression for all other requests
-    return compression.filter(req, res);
-  }
-}));
+app.use(
+  compression({
+    level: 6, // Compression level (1-9, 6 is a good balance)
+    filter: (req, res) => {
+      // Don't compress responses if client doesn't support it
+      if (req.headers['x-no-compression']) {
+        return false;
+      }
+      // Use compression for all other requests
+      return compression.filter(req, res);
+    },
+  }),
+);
 
 // CORS - Allow multiple origins
-const allowedOrigins = process.env.CORS_ORIGIN 
-  ? process.env.CORS_ORIGIN.split(',').map(origin => origin.trim())
-  : ['http://localhost:3000', 'http://localhost:3003', 'http://localhost:3006'];
+const allowedOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',').map((origin) => origin.trim())
+  : [
+      'http://localhost:3000',
+      'http://localhost:3003',
+      'http://localhost:3006',
+      // VPS Origins
+      'http://srv512766.hstgr.cloud:3006',
+      'http://srv512766.hstgr.cloud:3000',
+      'https://srv512766.hstgr.cloud:3006',
+      'https://srv512766.hstgr.cloud:3000',
+    ];
 
-app.use(cors({
-  origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-    
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(null, true); // Allow all origins for now (can be restricted later)
-    }
-  },
-  credentials: true
-}));
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.indexOf(origin) !== -1) {
+        callback(null, true);
+      } else {
+        callback(null, true); // Allow all origins for now (can be restricted later)
+      }
+    },
+    credentials: true,
+  }),
+);
 
 // Body parsing
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
 
 // Swagger UI
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
-  customCss: '.swagger-ui .topbar { display: none }',
-  customSiteTitle: 'Dashboard API Documentation'
-}));
+app.use(
+  '/api-docs',
+  swaggerUi.serve,
+  swaggerUi.setup(swaggerSpec, {
+    customCss: '.swagger-ui .topbar { display: none }',
+    customSiteTitle: 'Dashboard API Documentation',
+  }),
+);
+
+// Root route - API information (fixes 404 warning)
+app.get('/', (req, res) => {
+  res.json({
+    name: 'Analytics Dashboard API',
+    version: '1.0.0',
+    status: 'running',
+    endpoints: {
+      health: '/api/health',
+      apiDocs: '/api-docs',
+      orders: '/api/orders',
+      analytics: '/api/analytics',
+      import: '/api/import',
+    },
+    documentation: '/api-docs',
+  });
+});
 
 // Swagger JSON endpoint
 app.get('/api-docs.json', (req, res) => {
@@ -156,24 +190,25 @@ app.get('/api-docs.json', (req, res) => {
 app.get('/api/health', (req, res) => {
   const poolStats = getPoolStats();
   const cacheStats = getCacheStats();
-  res.json({ 
-    status: 'OK', 
+  res.json({
+    status: 'OK',
     message: 'Server is running',
     timestamp: new Date().toISOString(),
     database: {
       connected: true,
-      poolStats: poolStats
+      poolStats: poolStats,
     },
     cache: cacheStats,
     performance: {
       nodeVersion: process.version,
       memory: {
         used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + ' MB',
-        total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024) + ' MB',
-        rss: Math.round(process.memoryUsage().rss / 1024 / 1024) + ' MB'
+        total:
+          Math.round(process.memoryUsage().heapTotal / 1024 / 1024) + ' MB',
+        rss: Math.round(process.memoryUsage().rss / 1024 / 1024) + ' MB',
       },
-      uptime: Math.round(process.uptime()) + ' seconds'
-    }
+      uptime: Math.round(process.uptime()) + ' seconds',
+    },
   });
 });
 
@@ -194,24 +229,24 @@ app.use((err, req, res, next) => {
     method: req.method,
     url: req.originalUrl,
     error: err.message,
-    stack: err.stack
+    stack: err.stack,
   });
-  
+
   res.status(err.status || 500).json({
     success: false,
     error: {
       message: err.message || 'Internal Server Error',
-      ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
-    }
+      ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
+    },
   });
 });
 
 // 404 handler
 app.use((req, res) => {
   logger.warn(`404 - Route not found: ${req.method} ${req.originalUrl}`);
-  res.status(404).json({ 
+  res.status(404).json({
     success: false,
-    error: 'Route not found' 
+    error: 'Route not found',
   });
 });
 
@@ -220,30 +255,40 @@ const startServer = async () => {
   try {
     logger.info('Starting server...');
     logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
-    
+
     // Test database connection with retry
     logger.info('Testing database connection...');
     const dbConnected = await testConnection(3, 2000);
     if (!dbConnected) {
       const allowStartWithoutDB = process.env.ALLOW_START_WITHOUT_DB === 'true';
-      
+
       if (allowStartWithoutDB) {
-        logger.warn('⚠️  Database connection failed, but starting server anyway (ALLOW_START_WITHOUT_DB=true)');
-        logger.warn('⚠️  API endpoints will not work without database connection');
-        logger.warn('⚠️  To fix: Whitelist your IP (122.181.101.44) in MySQL server');
+        logger.warn(
+          '⚠️  Database connection failed, but starting server anyway (ALLOW_START_WITHOUT_DB=true)',
+        );
+        logger.warn(
+          '⚠️  API endpoints will not work without database connection',
+        );
+        logger.warn(
+          '⚠️  To fix: Whitelist your IP (122.181.101.44) in MySQL server',
+        );
       } else {
         logger.error('Database connection failed after multiple attempts.');
         logger.error('Server will not start without database connection.');
         logger.error('');
         logger.error('💡 Solutions:');
-        logger.error('   1. Whitelist your IP address (122.181.101.44) in MySQL server');
-        logger.error('   2. Or set ALLOW_START_WITHOUT_DB=true in .env (for testing only)');
+        logger.error(
+          '   1. Whitelist your IP address (122.181.101.44) in MySQL server',
+        );
+        logger.error(
+          '   2. Or set ALLOW_START_WITHOUT_DB=true in .env (for testing only)',
+        );
         logger.error('   3. Check MySQL server allows remote connections');
         logger.error('   4. Verify firewall settings');
         process.exit(1);
       }
     }
-    
+
     // Verify and create database tables if missing
     logger.info('Verifying database tables...');
     try {
@@ -254,12 +299,12 @@ const startServer = async () => {
       logger.warn('Could not verify/create all tables:', error.message);
       // Continue anyway - tables might already exist
     }
-    
+
     app.listen(PORT, '0.0.0.0', () => {
       const os = require('os');
       const networkInterfaces = os.networkInterfaces();
       let serverIP = 'localhost';
-      
+
       // Get server IP address
       for (const interfaceName in networkInterfaces) {
         const interfaces = networkInterfaces[interfaceName];
@@ -271,11 +316,15 @@ const startServer = async () => {
         }
         if (serverIP !== 'localhost') break;
       }
-      
+
       logger.info('');
-      logger.info('═══════════════════════════════════════════════════════════');
+      logger.info(
+        '═══════════════════════════════════════════════════════════',
+      );
       logger.info('🚀 BACKEND SERVER STARTED SUCCESSFULLY');
-      logger.info('═══════════════════════════════════════════════════════════');
+      logger.info(
+        '═══════════════════════════════════════════════════════════',
+      );
       logger.info(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
       logger.info(`🔌 Server Port: ${PORT}`);
       logger.info('');
@@ -286,12 +335,18 @@ const startServer = async () => {
       logger.info(`   Swagger:  http://localhost:${PORT}/api-docs`);
       logger.info('');
       logger.info('🌐 If using Nginx:');
-      logger.info(`   API:      https://your-domain.com/api (or http://your-domain.com/api)`);
+      logger.info(
+        `   API:      https://your-domain.com/api (or http://your-domain.com/api)`,
+      );
       logger.info(`   Health:   https://your-domain.com/api/health`);
       logger.info(`   Swagger:  https://your-domain.com/api-docs`);
       logger.info('');
-      logger.info(`📝 Logs directory: ${require('path').join(__dirname, 'logs')}`);
-      logger.info('═══════════════════════════════════════════════════════════');
+      logger.info(
+        `📝 Logs directory: ${require('path').join(__dirname, 'logs')}`,
+      );
+      logger.info(
+        '═══════════════════════════════════════════════════════════',
+      );
       logger.info('');
     });
   } catch (error) {
@@ -302,8 +357,10 @@ const startServer = async () => {
 
 // Graceful shutdown
 const gracefulShutdown = async (signal) => {
-  logger.info(`${signal} signal received: closing HTTP server and database connections`);
-  
+  logger.info(
+    `${signal} signal received: closing HTTP server and database connections`,
+  );
+
   try {
     // Close database connections
     const { pool } = require('./config/database');
@@ -312,7 +369,7 @@ const gracefulShutdown = async (signal) => {
   } catch (error) {
     logger.error('Error closing database connections:', error);
   }
-  
+
   process.exit(0);
 };
 
@@ -322,4 +379,3 @@ process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 startServer();
 
 module.exports = app;
-

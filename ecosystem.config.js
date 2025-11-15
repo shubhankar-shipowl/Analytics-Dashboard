@@ -45,8 +45,8 @@ module.exports = {
         NODE_ENV: 'production',
         PORT: 5009, // Backend port
         FRONTEND_PORT: 3006, // Frontend port
-        // For VPS: Replace with your VPS IP or domain
-        REACT_APP_API_URL: 'http://localhost:5009/api', // CHANGE THIS to your VPS IP/domain
+        // VPS Configuration: http://srv512766.hstgr.cloud
+        REACT_APP_API_URL: 'http://srv512766.hstgr.cloud:5009/api', // VPS backend API URL
         NODE_OPTIONS: '--no-deprecation --max-old-space-size=2048', // Suppress warnings and increase memory
         BROWSER: 'none',
       },
@@ -124,6 +124,8 @@ module.exports = {
         NODE_ENV: 'production',
         PORT: 5009,
         NODE_OPTIONS: '--no-deprecation --max-old-space-size=1024',
+        // VPS Configuration
+        REACT_APP_API_URL: 'http://srv512766.hstgr.cloud:5009/api',
       },
 
       // Environment File Loading
@@ -185,7 +187,7 @@ module.exports = {
       env_production: {
         NODE_ENV: 'production',
         PORT: 3006,
-        REACT_APP_API_URL: 'http://localhost:5009/api',
+        REACT_APP_API_URL: 'http://srv512766.hstgr.cloud:5009/api', // VPS backend API URL
         BROWSER: 'none',
         NODE_OPTIONS: '--no-deprecation --max-old-space-size=2048',
       },
