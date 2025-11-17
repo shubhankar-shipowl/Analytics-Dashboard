@@ -9,6 +9,9 @@ node_modules/
 # Production
 /build
 /dist
+/.env
+/.env.production
+/.env.production.local
 
 # Misc
 .DS_Store

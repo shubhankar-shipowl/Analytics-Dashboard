@@ -16,37 +16,6 @@
 module.exports = {
   apps: [
     {
-      name: 'dashboard',
-      script: './start-combined.js',
-      cwd: './',
-      instances: 1,
-      exec_mode: 'fork',
-      watch: false,
-      max_memory_restart: '1500M', // Combined memory limit (1.5GB)
-      env: {
-        NODE_ENV: 'development',
-        PORT: 5000, // Backend port
-        FRONTEND_PORT: 3003 // Frontend port
-      },
-      env_production: {
-        NODE_ENV: 'production',
-        PORT: 5000, // Backend port
-        FRONTEND_PORT: 3003 // Frontend port
-      },
-      error_file: './logs/pm2-combined-error.log',
-      out_file: './logs/pm2-combined-out.log',
-      log_file: './logs/pm2-combined.log',
-      time: true,
-      merge_logs: true,
-      autorestart: true,
-      max_restarts: 10,
-      min_uptime: '10s',
-      restart_delay: 4000,
-      kill_timeout: 10000, // Longer timeout for graceful shutdown of both processes
-      wait_ready: false,
-      listen_timeout: 30000
-    },
-    {
       name: 'dashboard-backend',
       script: './backend/server.js',
       cwd: './backend',
@@ -56,11 +25,13 @@ module.exports = {
       max_memory_restart: '500M', // Restart if memory exceeds 500MB
       env: {
         NODE_ENV: 'development',
-        PORT: 5000
+        PORT: 5006,
+        SERVE_STATIC_FILES: 'true' // Serve frontend from backend on same port
       },
       env_production: {
         NODE_ENV: 'production',
-        PORT: 5000
+        PORT: process.env.PORT || 5006,
+        SERVE_STATIC_FILES: 'true' // Always serve static files in production
       },
       error_file: './logs/pm2-backend-error.log',
       out_file: './logs/pm2-backend-out.log',
@@ -89,13 +60,15 @@ module.exports = {
       env: {
         NODE_ENV: 'development',
         PORT: 3003,
-        REACT_APP_API_URL: 'http://localhost:5000/api',
+        FRONTEND_PORT: 3003,
+        REACT_APP_API_URL: 'http://localhost:5006/api',
         BROWSER: 'none' // Don't auto-open browser
       },
       env_production: {
         NODE_ENV: 'production',
         PORT: 3003,
-        REACT_APP_API_URL: 'http://localhost:5000/api',
+        FRONTEND_PORT: 3003,
+        REACT_APP_API_URL: process.env.REACT_APP_API_URL || 'http://localhost:5006/api',
         BROWSER: 'none'
       },
       error_file: './logs/pm2-frontend-error.log',
@@ -108,9 +81,10 @@ module.exports = {
       min_uptime: '10s',
       restart_delay: 4000,
       kill_timeout: 5000,
-      // Only start frontend if backend is running
       wait_ready: false,
-      listen_timeout: 30000 // React dev server takes longer to start
+      listen_timeout: 30000, // React dev server takes longer to start
+      // Only start frontend if SERVE_STATIC_FILES is false
+      // This is handled by conditional start scripts
     }
   ]
 };

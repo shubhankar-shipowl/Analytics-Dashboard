@@ -147,6 +147,43 @@ npm run backend:dev
 npm run frontend:dev
 ```
 
+## Production Deployment
+
+### Quick Start for Production
+
+1. **Configure environment variables** (see [ENV_VARIABLES.md](./ENV_VARIABLES.md))
+   - Set `REACT_APP_API_URL` in root `.env` file (e.g., `https://yourdomain.com/api`)
+   - Configure `backend/.env` with production values
+2. **Build and start with PM2:**
+   ```bash
+   npm run pm2:start:prod
+   ```
+   
+   This will:
+   - Build the React app for production
+   - Start the backend server on port 5006
+   - Serve both API (`/api/*`) and frontend from the same port
+
+### Production Deployment Guide
+
+For detailed deployment instructions, especially for Hostinger hosting, see:
+- **[DEPLOYMENT.md](./DEPLOYMENT.md)** - Complete deployment guide
+- **[PRODUCTION_CHECKLIST.md](./PRODUCTION_CHECKLIST.md)** - Pre-deployment checklist
+- **[ENV_VARIABLES.md](./ENV_VARIABLES.md)** - Environment variables documentation
+
+### Production Features
+
+- ✅ **Single port** - Backend serves both API and frontend from the same port (5006)
+- ✅ **Optimized build** - React app is built and served as static files
+- ✅ **Security headers** - XSS protection, frame options, content type options
+- ✅ **CORS protection** - Restricted to configured domains
+- ✅ **Rate limiting** - API protection against abuse
+- ✅ **Compression** - Gzip compression for all responses
+- ✅ **Error handling** - Production-safe error messages
+- ✅ **Health checks** - `/api/health` endpoint for monitoring
+- ✅ **Auto-restart** - PM2 automatically restarts on crashes
+- ✅ **Logging** - Comprehensive logging system
+
 ## Production Deployment with PM2
 
 For production environments, we recommend using PM2 (Process Manager 2) for process management, auto-restart, and monitoring.
@@ -164,9 +201,22 @@ npm install -g pm2
 npm run pm2:start
 ```
 
-**Production Mode:**
+**Production Mode (single port - backend serves frontend):**
 ```bash
 npm run pm2:start:prod
+```
+
+**Development Mode (separate ports):**
+```bash
+npm run pm2:start:dev
+# or
+npm run pm2:start
+```
+
+**Development Mode (same port - requires build):**
+```bash
+npm run build:prod
+npm run pm2:start:dev:combined
 ```
 
 ### PM2 Management Commands
@@ -178,6 +228,7 @@ npm run pm2:monit     # Real-time monitoring
 npm run pm2:stop      # Stop all processes
 npm run pm2:restart   # Restart all processes
 npm run pm2:delete    # Delete all processes
+npm run deploy:prod   # Rebuild and restart (for updates)
 ```
 
 ### Auto-Start on System Boot

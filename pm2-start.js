@@ -33,9 +33,17 @@ console.log(`🚀 Starting Dashboard application with PM2 (${env} mode)...\n`);
 try {
   // Start with PM2
   if (env === 'production') {
-    execSync('pm2 start ecosystem.config.js --env production', { stdio: 'inherit' });
+    // Build React app first, then start only backend (which serves the built app)
+    console.log('📦 Building React app for production...\n');
+    execSync('npm run build:prod', { stdio: 'inherit' });
+    console.log('\n🚀 Starting backend server on port 5006 (serves both API and frontend)...\n');
+    execSync('pm2 start ecosystem.config.js --only dashboard-backend --env production', { stdio: 'inherit' });
   } else {
-    execSync('pm2 start ecosystem.config.js', { stdio: 'inherit' });
+    // Development: build and start backend (serves frontend on same port)
+    console.log('📦 Building React app...\n');
+    execSync('npm run build:prod', { stdio: 'inherit' });
+    console.log('\n🚀 Starting backend server on port 5006 (serves both API and frontend)...\n');
+    execSync('pm2 start ecosystem.config.js --only dashboard-backend --env development', { stdio: 'inherit' });
   }
   
   console.log('\n✅ Application started successfully!');

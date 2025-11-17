@@ -10,8 +10,8 @@ npm install -g pm2
 
 ### Start Application
 ```bash
-npm run pm2:start          # Development
-npm run pm2:start:prod     # Production
+npm run pm2:start          # Development (separate ports)
+npm run pm2:start:prod     # Production (single port - backend serves frontend)
 ```
 
 ### Manage Processes
@@ -25,8 +25,8 @@ npm run pm2:delete         # Delete all
 ### View Logs
 ```bash
 npm run pm2:logs           # All logs
-pm2 logs dashboard-backend # Backend only
-pm2 logs dashboard-frontend # Frontend only
+pm2 logs dashboard-backend  # Backend only (production uses this)
+pm2 logs dashboard-frontend # Frontend only (development only)
 ```
 
 ### Monitor

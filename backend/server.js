@@ -12,6 +12,7 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const compression = require('compression');
 const swaggerUi = require('swagger-ui-express');
+const path = require('path');
 require('dotenv').config();
 
 const { testConnection, getPoolStats } = require('./config/database');
@@ -25,7 +26,8 @@ const analyticsRoutes = require('./routes/analytics');
 const importRoutes = require('./routes/import');
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5006;
+const isProduction = process.env.NODE_ENV === 'production';
 
 // Request logging middleware
 app.use((req, res, next) => {
@@ -73,6 +75,25 @@ app.use((req, res, next) => {
   next();
 });
 
+// Security Headers Middleware
+app.use((req, res, next) => {
+  // Security headers
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  
+  // Only add HSTS in production with HTTPS
+  if (isProduction && req.secure) {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+  
+  // Remove X-Powered-By header
+  res.removeHeader('X-Powered-By');
+  
+  next();
+});
+
 // Middleware
 // Compression - compress all responses
 app.use(compression({
@@ -90,37 +111,48 @@ app.use(compression({
 // CORS - Allow multiple origins
 const allowedOrigins = process.env.CORS_ORIGIN 
   ? process.env.CORS_ORIGIN.split(',').map(origin => origin.trim())
-  : ['http://localhost:3000', 'http://localhost:3003'];
+  : (isProduction ? [] : ['http://localhost:3000', 'http://localhost:3003']);
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-    
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
+    // In production, restrict to allowed origins
+    if (isProduction) {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) {
+        return callback(null, true);
+      }
+      if (allowedOrigins.length === 0 || allowedOrigins.indexOf(origin) !== -1) {
+        callback(null, true);
+      } else {
+        logger.warn(`CORS blocked request from origin: ${origin}`);
+        callback(new Error('Not allowed by CORS'));
+      }
     } else {
-      callback(null, true); // Allow all origins for now (can be restricted later)
+      // In development, allow all origins
+      callback(null, true);
     }
   },
-  credentials: true
+  credentials: true,
+  optionsSuccessStatus: 200
 }));
 
 // Body parsing
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
 
-// Swagger UI
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
-  customCss: '.swagger-ui .topbar { display: none }',
-  customSiteTitle: 'Dashboard API Documentation'
-}));
+// Swagger UI (only in development or if explicitly enabled)
+if (!isProduction || process.env.ENABLE_SWAGGER === 'true') {
+  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+    customCss: '.swagger-ui .topbar { display: none }',
+    customSiteTitle: 'Dashboard API Documentation'
+  }));
 
-// Swagger JSON endpoint
-app.get('/api-docs.json', (req, res) => {
-  res.setHeader('Content-Type', 'application/json');
-  res.send(swaggerSpec);
-});
+  // Swagger JSON endpoint
+  app.get('/api-docs.json', (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.send(swaggerSpec);
+  });
+}
 
 /**
  * @swagger
@@ -188,6 +220,40 @@ app.use('/api/import', importRoutes);
 // Orders routes
 app.use('/api/orders', ordersRoutes);
 
+// Serve static files from React build
+// In production, serve the built React app from the backend
+// In development, this can be enabled by setting SERVE_STATIC_FILES=true
+const shouldServeStatic = isProduction || process.env.SERVE_STATIC_FILES === 'true';
+
+if (shouldServeStatic) {
+  const buildPath = path.join(__dirname, '..', 'build');
+  
+  // Check if build directory exists
+  const fs = require('fs');
+  if (fs.existsSync(buildPath)) {
+    // Serve static files
+    app.use(express.static(buildPath, {
+      maxAge: isProduction ? '1y' : '0', // Cache in production, no cache in dev
+      etag: true,
+      lastModified: true
+    }));
+    
+    // Serve React app for all non-API routes
+    app.get('*', (req, res, next) => {
+      // Don't serve React app for API routes
+      if (req.path.startsWith('/api')) {
+        return next();
+      }
+      res.sendFile(path.join(buildPath, 'index.html'), {
+        maxAge: '0', // Don't cache HTML
+        etag: false
+      });
+    });
+  } else {
+    logger.warn(`⚠️  Build directory not found at ${buildPath}. Run 'npm run build' to create it.`);
+  }
+}
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   logger.error('Request error:', {
@@ -206,14 +272,25 @@ app.use((err, req, res, next) => {
   });
 });
 
-// 404 handler
-app.use((req, res) => {
-  logger.warn(`404 - Route not found: ${req.method} ${req.originalUrl}`);
+// 404 handler for API routes
+app.use('/api/*', (req, res) => {
+  logger.warn(`404 - API route not found: ${req.method} ${req.originalUrl}`);
   res.status(404).json({ 
     success: false,
-    error: 'Route not found' 
+    error: 'API route not found' 
   });
 });
+
+// 404 handler for non-API routes (only in development, production serves React app)
+if (!isProduction) {
+  app.use((req, res) => {
+    logger.warn(`404 - Route not found: ${req.method} ${req.originalUrl}`);
+    res.status(404).json({ 
+      success: false,
+      error: 'Route not found' 
+    });
+  });
+}
 
 // Start server
 const startServer = async () => {
@@ -230,16 +307,17 @@ const startServer = async () => {
       if (allowStartWithoutDB) {
         logger.warn('⚠️  Database connection failed, but starting server anyway (ALLOW_START_WITHOUT_DB=true)');
         logger.warn('⚠️  API endpoints will not work without database connection');
-        logger.warn('⚠️  To fix: Whitelist your IP (122.181.101.44) in MySQL server');
+        logger.warn('⚠️  To fix: Whitelist your server IP address in MySQL server');
       } else {
         logger.error('Database connection failed after multiple attempts.');
         logger.error('Server will not start without database connection.');
         logger.error('');
         logger.error('💡 Solutions:');
-        logger.error('   1. Whitelist your IP address (122.181.101.44) in MySQL server');
+        logger.error('   1. Whitelist your server IP address in MySQL server');
         logger.error('   2. Or set ALLOW_START_WITHOUT_DB=true in .env (for testing only)');
         logger.error('   3. Check MySQL server allows remote connections');
         logger.error('   4. Verify firewall settings');
+        logger.error('   5. Verify database credentials in backend/.env');
         process.exit(1);
       }
     }
@@ -255,11 +333,24 @@ const startServer = async () => {
       // Continue anyway - tables might already exist
     }
     
-    app.listen(PORT, () => {
+    app.listen(PORT, '0.0.0.0', () => {
       logger.info(`🚀 Server running on port ${PORT}`);
       logger.info(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
       logger.info(`🔗 API URL: http://localhost:${PORT}/api`);
-      logger.info(`📚 Swagger UI: http://localhost:${PORT}/api-docs`);
+      if (!isProduction || process.env.ENABLE_SWAGGER === 'true') {
+        logger.info(`📚 Swagger UI: http://localhost:${PORT}/api-docs`);
+      }
+      if (shouldServeStatic) {
+        const buildPath = path.join(__dirname, '..', 'build');
+        const fs = require('fs');
+        if (fs.existsSync(buildPath)) {
+          logger.info(`🌐 Serving React app from: ${buildPath}`);
+        } else {
+          logger.warn(`⚠️  Build directory not found. Frontend will not be served. Run 'npm run build' to create it.`);
+        }
+      } else {
+        logger.info(`🌐 Frontend running separately on port ${process.env.FRONTEND_PORT || 3003}`);
+      }
       logger.info(`📝 Logs directory: ${require('path').join(__dirname, 'logs')}`);
     });
   } catch (error) {
