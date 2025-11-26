@@ -7,11 +7,11 @@ const rateLimit = require('express-rate-limit');
 
 /**
  * General API rate limiter
- * 100 requests per 15 minutes per IP
+ * Increased limit for dashboard usage (multiple simultaneous requests)
  */
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per windowMs
+  max: 1000, // Limit each IP to 1000 requests per windowMs (increased for dashboard)
   message: {
     success: false,
     error: 'Too many requests from this IP, please try again later.'
@@ -50,11 +50,11 @@ const strictLimiter = rateLimit({
 
 /**
  * Analytics endpoint rate limiter
- * 50 requests per 15 minutes per IP (analytics can be expensive)
+ * Increased limit for dashboard usage (dashboard loads multiple analytics endpoints)
  */
 const analyticsLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 50, // Limit each IP to 50 requests per windowMs
+  max: 500, // Limit each IP to 500 requests per windowMs (increased for dashboard)
   message: {
     success: false,
     error: 'Too many analytics requests, please try again later.'

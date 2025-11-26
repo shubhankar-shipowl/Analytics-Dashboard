@@ -1,24 +1,33 @@
 // API configuration
-// For VPS: Use environment variable, fallback to VPS URL if on VPS
+// For production with Nginx: Use relative URLs (Nginx handles routing)
+// For development: Use direct backend URL
 const getAPIBaseURL = () => {
   // First, check environment variable (set by PM2 or build process)
   if (process.env.REACT_APP_API_URL) {
+    // If REACT_APP_API_URL is set to relative path, use it
+    if (process.env.REACT_APP_API_URL.startsWith('/')) {
+      return process.env.REACT_APP_API_URL;
+    }
     return process.env.REACT_APP_API_URL;
   }
   
-  // Check if we're on VPS (window.location will be available in browser)
+  // Check if we're in browser (production with Nginx)
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname;
-    // If accessing via VPS domain, use VPS backend URL
-    if (hostname.includes('srv512766.hstgr.cloud') || hostname.includes('hstgr.cloud')) {
-      return 'http://srv512766.hstgr.cloud:5009/api';
+    const port = window.location.port;
+    
+    // If accessing via Nginx on port 3006, use relative URL (Nginx routes /api to backend)
+    if (port === '3006' || hostname.includes('srv512766.hstgr.cloud') || hostname.includes('hstgr.cloud')) {
+      return '/api'; // Relative URL - Nginx will proxy to backend
     }
-    // If accessing via IP address (89.116.21.112), use that IP for backend
-    if (hostname === '89.116.21.112' || hostname.match(/^\d+\.\d+\.\d+\.\d+$/)) {
-      return `http://${hostname}:5009/api`;
+    
+    // If accessing via IP address, use relative URL if on port 3006
+    if (port === '3006' || hostname.match(/^\d+\.\d+\.\d+\.\d+$/)) {
+      return '/api'; // Relative URL - Nginx will proxy to backend
     }
   }
-  // Fallback to localhost for local development
+  
+  // Fallback to localhost for local development (direct backend access)
   return 'http://localhost:5009/api';
 };
 

@@ -203,6 +203,31 @@ const importExcelFile = async (filePath, options = {}) => {
     
     logger.info(`Found ${jsonData.length} rows in Excel file`);
     
+    // Log actual column names from Excel file for debugging
+    if (jsonData.length > 0) {
+      const actualColumns = Object.keys(jsonData[0]);
+      logger.info(`📋 Excel file columns found: ${actualColumns.join(', ')}`);
+      logger.info(`📋 Total columns: ${actualColumns.length}`);
+      
+      // Log column mapping for key fields
+      const keyMappings = {
+        'order_status': normalizeColumnName('status'),
+        'order_value': normalizeColumnName('order amount'),
+        'product_name': normalizeColumnName('product name'),
+        'pincode': normalizeColumnName('pincode'),
+        'order_date': normalizeColumnName('order date')
+      };
+      logger.info(`📋 Column mappings:`, keyMappings);
+      
+      // Check if key columns exist
+      const hasStatus = actualColumns.some(col => normalizeColumnName(col) === 'order_status');
+      const hasOrderValue = actualColumns.some(col => normalizeColumnName(col) === 'order_value');
+      const hasProductName = actualColumns.some(col => normalizeColumnName(col) === 'product_name');
+      const hasPincode = actualColumns.some(col => normalizeColumnName(col) === 'pincode');
+      
+      logger.info(`📋 Key columns found: status=${hasStatus}, order_value=${hasOrderValue}, product_name=${hasProductName}, pincode=${hasPincode}`);
+    }
+    
     // Normalize and process data
     const normalizedData = jsonData.map((row, index) => {
       const normalized = {};

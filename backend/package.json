@@ -4,9 +4,9 @@
   "description": "Backend API for Analytics Dashboard",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "PORT=5009 nodemon server.js",
-    "start:verbose": "NODE_ENV=development node server.js",
+    "start": "node --max-old-space-size=4096 server.js",
+    "dev": "nodemon --exec \"node --max-old-space-size=4096\" server.js",
+    "start:verbose": "set NODE_ENV=development&& node --max-old-space-size=4096 server.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "import:excel": "node scripts/import-excel.js",
     "import:excel:clear": "node scripts/import-excel.js --clear",

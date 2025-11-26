@@ -273,6 +273,13 @@ function App() {
         setData(loadedData);
         console.log(`✅ Dashboard refreshed with ${loadedData.length} records`);
         isInitialLoadRef.current = false; // Mark as no longer initial load
+        
+        // Force refresh analytics after data is loaded
+        // Small delay to ensure state is updated
+        setTimeout(() => {
+          console.log('🔄 Triggering analytics refresh after upload...');
+          fetchAnalytics();
+        }, 500);
       } else {
         console.warn('⚠️ No data loaded after upload');
         // Still set empty array to clear old data
@@ -491,8 +498,33 @@ function App() {
         try {
           const kpisData = await fetchKPIs(filters);
           if (kpisData) {
-            console.log('✅ Using KPIs from backend:', kpisData);
-            setKpis(kpisData);
+            // Check if backend returned all zeros (might indicate data structure mismatch)
+            const hasValidData = kpisData.totalOrders > 0 || kpisData.totalRevenue > 0;
+            
+            if (hasValidData) {
+              console.log('✅ Using KPIs from backend:', kpisData);
+              setKpis(kpisData);
+            } else {
+              console.warn('⚠️ Backend returned all zeros, falling back to local calculation from filteredData');
+              // Fallback to local calculation if backend returns zeros but we have data
+              if (filteredData.length > 0) {
+                const calculatedKPIs = calculateKPIs(filteredData);
+                console.log('📊 Using locally calculated KPIs from filteredData:', calculatedKPIs);
+                setKpis({
+                  totalOrders: calculatedKPIs.totalOrders,
+                  totalRevenue: calculatedKPIs.totalRevenue,
+                  avgOrderValue: calculatedKPIs.avgOrderValue,
+                  topPincode: calculatedKPIs.topPincode,
+                  topPincodeRatio: calculatedKPIs.topPincodeRatio,
+                  topPincodeDeliveredCount: calculatedKPIs.topPincodeDeliveredCount || 0,
+                  totalRTO: calculatedKPIs.totalRTO,
+                  totalRTS: calculatedKPIs.totalRTS,
+                });
+              } else {
+                // No filteredData either, use backend result (even if zeros)
+                setKpis(kpisData);
+              }
+            }
           } else {
             console.warn('⚠️ Backend returned null, falling back to local calculation');
             if (filteredData.length > 0) {
@@ -1059,7 +1091,7 @@ function App() {
           color: backendConnected ? '#28a745' : '#ffc107'
         }}>
           {backendConnected ? (
-            <>📡 <strong>Data Source:</strong> Database (MySQL) - {data.length.toLocaleString()} records</>
+            <>📡 <strong>Data Source:</strong> Database (MySQL) - {kpis.totalOrders > 0 ? kpis.totalOrders.toLocaleString() : data.length.toLocaleString()} records</>
           ) : (
             <>📂 <strong>Data Source:</strong> Local Excel File - {data.length.toLocaleString()} records</>
           )}

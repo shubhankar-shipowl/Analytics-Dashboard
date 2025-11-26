@@ -68,9 +68,18 @@ router.get('/kpis', cacheMiddleware(120), async (req, res) => {
 
     // CRITICAL: Only apply date filters if NOT a lifetime request
     // Lifetime requests should include ALL data regardless of date
+    // IMPORTANT: If no date filters are provided, include ALL data (not just 90 days)
+    // This ensures KPIs show complete data when no date filter is selected
     const isLifetimeRequest = allData === 'true' || lifetime === 'true';
+    const hasDateFilters = startDate || endDate;
     
-    if (!isLifetimeRequest) {
+    // If no date filters AND no lifetime flag, default to ALL data for KPIs
+    // (Unlike orders endpoint which has 90-day default for performance)
+    if (!hasDateFilters && !isLifetimeRequest) {
+      logger.info('📅 Analytics KPIs - No date filters provided: Including ALL data for accurate KPIs');
+      // Don't add any date filters - include all data
+    } else if (!isLifetimeRequest && hasDateFilters) {
+      // Apply date filters only if explicitly provided
       if (startDate) {
         // Optimize: Avoid DATE() function on column for better index usage
         whereClause += ' AND order_date >= ?';
@@ -104,28 +113,12 @@ router.get('/kpis', cacheMiddleware(120), async (req, res) => {
       params.push(pincode);
     }
 
-    // Total Orders = RTS + RTO + Dispatched + NDR + RTO-IT + RTO-I + RTO-II + RTO-Dispatched + RTO Pending + Lost + Delivered
+    // Total Orders = ALL orders in the database (no status filter)
+    // Changed to count ALL orders regardless of status to show accurate total
     const totalOrdersSql = `
       SELECT COUNT(*) as total 
       FROM orders 
-      ${whereClause} 
-      AND (
-        LOWER(TRIM(order_status)) = 'rts' OR
-        LOWER(TRIM(order_status)) = 'rto' OR
-        LOWER(TRIM(order_status)) = 'delivered' OR
-        LOWER(TRIM(order_status)) = 'lost' OR
-        LOWER(TRIM(order_status)) = 'ndr' OR
-        LOWER(TRIM(order_status)) = 'dispatched' OR
-        LOWER(TRIM(order_status)) LIKE '%rto-it%' OR
-        LOWER(TRIM(order_status)) LIKE '%rto it%' OR
-        (LOWER(TRIM(order_status)) LIKE '%rto-i%' AND LOWER(TRIM(order_status)) NOT LIKE '%rto-it%') OR
-        LOWER(TRIM(order_status)) LIKE '%rto-ii%' OR
-        LOWER(TRIM(order_status)) LIKE '%rto ii%' OR
-        LOWER(TRIM(order_status)) LIKE '%rto-dispatched%' OR
-        LOWER(TRIM(order_status)) LIKE '%rto dispatched%' OR
-        LOWER(TRIM(order_status)) LIKE '%rto pending%' OR
-        LOWER(TRIM(order_status)) LIKE '%rto-pending%'
-      )
+      ${whereClause}
     `;
     const totalOrdersResult = await query(totalOrdersSql, params);
     const totalOrders = totalOrdersResult && totalOrdersResult.length > 0 ? totalOrdersResult[0].total : 0;

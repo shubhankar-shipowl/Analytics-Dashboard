@@ -319,8 +319,9 @@ class Order {
       // Ensure order_date index is used for sorting
       sql += ' ORDER BY order_date DESC, id DESC';
 
-      // Enforce reasonable limit to prevent huge queries
-      const limit = pagination.limit ? Math.min(parseInt(pagination.limit), 1000) : 100;
+      // Scalable limit - no restrictions, routes handle maxLimit
+      // Allow loading all records for analytics dashboard
+      const limit = pagination.limit ? parseInt(pagination.limit) : 100;
       const offset = pagination.offset ? parseInt(pagination.offset) : 0;
       
       sql += ' LIMIT ?';

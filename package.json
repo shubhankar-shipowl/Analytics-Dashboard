@@ -35,7 +35,9 @@
     "pm2:logs": "pm2 logs dashboard",
     "pm2:monit": "pm2 monit",
     "pm2:save": "pm2 save",
-    "pm2:startup": "pm2 startup"
+    "pm2:startup": "pm2 startup",
+    "deploy": "npm run build && pm2 restart dashboard",
+    "deploy:full": "npm install && cd backend && npm install && cd .. && npm run build && pm2 restart dashboard --update-env"
   },
   "eslintConfig": {
     "extends": [

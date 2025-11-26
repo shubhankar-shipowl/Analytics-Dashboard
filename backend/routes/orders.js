@@ -82,10 +82,17 @@ router.get('/', async (req, res) => {
       offset = 0 
     } = req.query;
 
-    // Enforce maximum limit to prevent slow queries
-    const maxLimit = 1000;
+    // Memory-safe limit for dashboard display
+    // Dashboard uses analytics API for KPIs (aggregated queries), so orders endpoint is just for display
+    // Increased to 100k for dashboard needs, but analytics endpoints handle all calculations
+    const maxLimit = 100000; // 100,000 records max per request (for dashboard display)
     const safeLimit = Math.min(parseInt(limit) || 100, maxLimit);
     const safeOffset = Math.max(parseInt(offset) || 0, 0);
+    
+    // Warn if limit is too high
+    if (parseInt(limit) > maxLimit) {
+      logger.warn(`⚠️ Requested limit ${limit} exceeds max ${maxLimit}. Using ${maxLimit} instead. Note: KPIs should use /api/analytics/kpis endpoint.`);
+    }
 
     const filters = {};
     // CRITICAL: Check for allData/lifetime flag to bypass 90-day default
@@ -108,8 +115,21 @@ router.get('/', async (req, res) => {
     if (order_id) filters.order_id = order_id;
 
     logger.info(`📊 Orders API - Fetching orders with filters:`, JSON.stringify(filters, null, 2));
+    
+    // Check memory before large queries
+    const memUsage = process.memoryUsage();
+    const memUsageMB = Math.round(memUsage.heapUsed / 1024 / 1024);
+    if (memUsageMB > 3000) {
+      logger.warn(`⚠️ High memory usage detected: ${memUsageMB}MB. Consider reducing limit.`);
+    }
+    
     const orders = await Order.find(filters, { limit: safeLimit, offset: safeOffset });
     const total = await Order.count(filters);
+
+    // Log memory after query
+    const memUsageAfter = process.memoryUsage();
+    const memUsageAfterMB = Math.round(memUsageAfter.heapUsed / 1024 / 1024);
+    logger.info(`📊 Fetched ${orders.length} orders. Memory: ${memUsageMB}MB -> ${memUsageAfterMB}MB`);
 
     res.json({
       success: true,
@@ -123,6 +143,17 @@ router.get('/', async (req, res) => {
     });
   } catch (error) {
     logger.error('Error fetching orders:', error);
+    
+    // Handle memory errors specifically
+    if (error.message && error.message.includes('heap') || error.message.includes('memory')) {
+      logger.error('💥 Memory error detected. Consider reducing limit or using pagination.');
+      return res.status(500).json({
+        success: false,
+        error: 'Memory limit exceeded. Please reduce the limit or use pagination with offset.',
+        suggestion: 'Try using a smaller limit (max 50,000) or paginate with offset parameter.'
+      });
+    }
+    
     res.status(500).json({
       success: false,
       error: error.message

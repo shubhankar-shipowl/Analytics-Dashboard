@@ -67,7 +67,9 @@ export const loadData = async (forceRefresh = false, filters = {}) => {
   try {
     console.log('📡 Fetching data from MySQL database with filters:', filters);
     // Build query parameters for date filtering
-    const queryParams = { limit: 1000000 };
+    // Dashboard only needs a sample for display - KPIs come from analytics API (aggregated queries)
+    // Reduced limit to prevent memory issues - KPIs are calculated server-side from ALL data
+    const queryParams = { limit: 10000 }; // 10k records max for display - KPIs use analytics API
     
     // CRITICAL: When "Lifetime" is selected, explicitly set allData=true to bypass 90-day default
     // The backend applies a 90-day default when no filters are provided for performance

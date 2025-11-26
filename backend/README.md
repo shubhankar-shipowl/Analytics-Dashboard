@@ -34,18 +34,19 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed architecture documentation
 npm install
 ```
 
-2. Create a `.env` file in the backend directory (copy from `.env.example`):
+2. Create a `.env` file in the backend directory (copy from `env.example`):
 ```bash
-cp .env.example .env
+cp env.example .env
 ```
 
 3. Update the `.env` file with your MySQL credentials:
 ```env
-DB_HOST=localhost
+PORT=5009
+DB_HOST=31.97.61.5
 DB_PORT=3306
-DB_USER=root
-DB_PASSWORD=your_password
-DB_NAME=dashboard_db
+DB_USER=admin_analytics
+DB_PASSWORD=Adminanalytics@12
+DB_NAME=admin_analytics
 ```
 
 4. Create the database and tables:
@@ -67,7 +68,7 @@ npm run dev
 npm start
 ```
 
-The server will run on `http://localhost:5000` by default.
+The server will run on `http://localhost:5009` by default (set via `env.example` to avoid port conflicts).
 
 ## API Endpoints
 
@@ -113,17 +114,17 @@ The server will run on `http://localhost:5000` by default.
 
 ### Get KPIs
 ```bash
-curl http://localhost:5000/api/analytics/kpis
+curl http://localhost:5009/api/analytics/kpis
 ```
 
 ### Get Orders with Filters
 ```bash
-curl "http://localhost:5000/api/orders?startDate=2024-01-01&endDate=2024-12-31&limit=50"
+curl "http://localhost:5009/api/orders?startDate=2024-01-01&endDate=2024-12-31&limit=50"
 ```
 
 ### Create Order
 ```bash
-curl -X POST http://localhost:5000/api/orders \
+curl -X POST http://localhost:5009/api/orders \
   -H "Content-Type: application/json" \
   -d '{
     "order_date": "2024-01-15",
@@ -156,7 +157,7 @@ The main table is `orders` with the following structure:
 
 ## Environment Variables
 
-- `PORT` - Server port (default: 5000)
+- `PORT` - Server port (default: 5009)
 - `NODE_ENV` - Environment (development/production)
 - `DB_HOST` - MySQL host
 - `DB_PORT` - MySQL port

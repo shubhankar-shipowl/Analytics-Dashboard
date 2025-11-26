@@ -12,15 +12,15 @@ const os = require('os');
 // Set environment variables
 process.env.NODE_ENV = process.env.NODE_ENV || 'development';
 process.env.PORT = process.env.PORT || '5009';
+// Frontend port: Use FRONTEND_PORT from env, default to 3006 for both dev and production
+// Nginx will proxy from port 3006 to this port
 const frontendPort = process.env.FRONTEND_PORT || '3006';
 
 // CRITICAL: Set REACT_APP_API_URL for frontend
-// For VPS: Use the VPS URL, for local: use localhost
-// Check if we're in production or if VPS URL is set
-const isVPS = process.env.REACT_APP_API_URL && process.env.REACT_APP_API_URL.includes('srv512766.hstgr.cloud');
-const defaultAPIUrl = isVPS 
-  ? 'http://srv512766.hstgr.cloud:5009/api'
-  : (process.env.REACT_APP_API_URL || 'http://localhost:5009/api');
+// In production with Nginx: Use relative URL '/api' (Nginx handles routing)
+// In development: Use direct backend URL
+const defaultAPIUrl = process.env.REACT_APP_API_URL || 
+  (process.env.NODE_ENV === 'production' ? '/api' : 'http://localhost:5009/api');
 
 process.env.REACT_APP_API_URL = defaultAPIUrl;
 process.env.BROWSER = 'none'; // Don't auto-open browser
@@ -84,9 +84,15 @@ const backend = spawn(backendCmd, [], {
   stdio: ['ignore', 'pipe', 'pipe'], // Pipe stdout and stderr
   shell: true,
   env: {
-    ...process.env,
+    ...process.env, // This includes all PM2 environment variables (DB_HOST, DB_USER, etc.)
     PORT: '5009',
     NODE_OPTIONS: process.env.NODE_OPTIONS || '--no-deprecation',
+    // Explicitly pass DB config to ensure it's available (PM2 env vars should already be in process.env)
+    DB_HOST: process.env.DB_HOST,
+    DB_PORT: process.env.DB_PORT,
+    DB_NAME: process.env.DB_NAME,
+    DB_USER: process.env.DB_USER,
+    DB_PASSWORD: process.env.DB_PASSWORD, // PM2 config has password without quotes
   },
 });
 

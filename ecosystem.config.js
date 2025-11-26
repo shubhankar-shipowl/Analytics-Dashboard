@@ -38,17 +38,36 @@ module.exports = {
         // For VPS: Replace 'http://YOUR_VPS_IP' with your actual VPS IP or domain
         // Example: 'http://123.45.67.89' or 'http://yourdomain.com'
         REACT_APP_API_URL: 'http://localhost:5009/api', // Change to your VPS IP for production
-        NODE_OPTIONS: '--no-deprecation --max-old-space-size=2048', // Suppress warnings and increase memory
+        NODE_OPTIONS: '--no-deprecation --max-old-space-size=4096', // Increased memory for production
         BROWSER: 'none', // Don't auto-open browser
+        ALLOW_START_WITHOUT_DB: 'true', // Allow backend to start without database (for testing)
+        // Database Configuration (from backend/.env)
+        DB_HOST: '31.97.61.5',
+        DB_PORT: '3306',
+        DB_NAME: 'admin_analytics',
+        DB_USER: 'admin_analytics',
+        DB_PASSWORD: 'Adminanalytics@12',
       },
       env_production: {
         NODE_ENV: 'production',
-        PORT: 5009, // Backend port
-        FRONTEND_PORT: 3006, // Frontend port
-        // VPS Configuration: http://srv512766.hstgr.cloud
-        REACT_APP_API_URL: 'http://srv512766.hstgr.cloud:5009/api', // VPS backend API URL
-        NODE_OPTIONS: '--no-deprecation --max-old-space-size=2048', // Suppress warnings and increase memory
+        PORT: 5009, // Backend port (internal, Nginx proxies to this)
+        FRONTEND_PORT: 3006, // Frontend port (same as Nginx port 3006)
+        // VPS Configuration: Use relative URL when behind Nginx on port 3006
+        // Nginx will route /api requests to backend on port 5009
+        REACT_APP_API_URL: '/api', // Relative URL - Nginx handles routing
+        NODE_OPTIONS: '--no-deprecation --max-old-space-size=4096', // Increased memory for production
         BROWSER: 'none',
+        ALLOW_START_WITHOUT_DB: 'false', // Production should require database
+        // Database Configuration
+        DB_HOST: '31.97.61.5',
+        DB_PORT: '3306',
+        DB_NAME: 'admin_analytics',
+        DB_USER: 'admin_analytics',
+        DB_PASSWORD: 'Adminanalytics@12',
+        // CORS Configuration (Nginx handles CORS in production)
+        CORS_ORIGIN: 'http://srv512766.hstgr.cloud:3006,https://srv512766.hstgr.cloud:3006',
+        // Production: Do not allow server to start without database
+        ALLOW_START_WITHOUT_DB: 'false',
       },
 
       // Logging Configuration
@@ -115,12 +134,13 @@ module.exports = {
       env: {
         NODE_ENV: 'development',
         PORT: 5009,
-        NODE_OPTIONS: '--no-deprecation --max-old-space-size=1024',
+        NODE_OPTIONS: '--no-deprecation --max-old-space-size=8192',
+        ALLOW_START_WITHOUT_DB: 'true', // Allow backend to start without database (for testing)
       },
       env_production: {
         NODE_ENV: 'production',
         PORT: 5009,
-        NODE_OPTIONS: '--no-deprecation --max-old-space-size=1024',
+        NODE_OPTIONS: '--no-deprecation --max-old-space-size=8192',
         // VPS Configuration
         REACT_APP_API_URL: 'http://srv512766.hstgr.cloud:5009/api',
       },
@@ -173,14 +193,14 @@ module.exports = {
         PORT: 3006,
         REACT_APP_API_URL: 'http://srv512766.hstgr.cloud:5009/api',
         BROWSER: 'none',
-        NODE_OPTIONS: '--no-deprecation --max-old-space-size=2048',
+        NODE_OPTIONS: '--no-deprecation --max-old-space-size=8192',
       },
       env_production: {
         NODE_ENV: 'production',
         PORT: 3006,
         REACT_APP_API_URL: 'http://srv512766.hstgr.cloud:5009/api', // VPS backend API URL
         BROWSER: 'none',
-        NODE_OPTIONS: '--no-deprecation --max-old-space-size=2048',
+        NODE_OPTIONS: '--no-deprecation --max-old-space-size=8192',
       },
 
       // Logging Configuration

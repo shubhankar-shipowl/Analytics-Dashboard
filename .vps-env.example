@@ -1,0 +1,23 @@
+# Production Environment Variables for VPS Deployment
+# Copy this to backend/.env and update with your values
+
+# Server Configuration
+PORT=5009
+NODE_ENV=production
+
+# MySQL Database Configuration
+DB_HOST=31.97.61.5
+DB_PORT=3306
+DB_NAME=admin_analytics
+DB_USER=admin_analytics
+DB_PASSWORD=Adminanalytics@12
+
+# CORS Configuration (Nginx handles CORS in production, but keep for direct access)
+CORS_ORIGIN=http://srv512766.hstgr.cloud:3006,https://srv512766.hstgr.cloud:3006
+
+# Production: Do not allow server to start without database
+ALLOW_START_WITHOUT_DB=false
+
+# Maximum body size for file uploads (in bytes or with suffix like '50mb')
+MAX_BODY_SIZE=100mb
+

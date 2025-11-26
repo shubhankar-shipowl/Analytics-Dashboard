@@ -28,6 +28,10 @@ const importRoutes = require('./routes/import');
 const app = express();
 const PORT = process.env.PORT || 5009; // Default to 5009 to avoid conflicts
 
+// Trust proxy - Required for Nginx reverse proxy
+// This allows req.ip, req.protocol, etc. to work correctly behind Nginx
+app.set('trust proxy', true);
+
 // Request logging middleware
 app.use((req, res, next) => {
   const startTime = Date.now();
@@ -91,17 +95,24 @@ app.use(
 );
 
 // CORS - Allow multiple origins
+// In production with Nginx, CORS is handled by Nginx, but we still allow all for safety
 const allowedOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(',').map((origin) => origin.trim())
   : [
       'http://localhost:3000',
       'http://localhost:3003',
       'http://localhost:3006',
-      // VPS Origins
+      // VPS Origins (Hostinger)
       'http://srv512766.hstgr.cloud:3006',
       'http://srv512766.hstgr.cloud:3000',
       'https://srv512766.hstgr.cloud:3006',
       'https://srv512766.hstgr.cloud:3000',
+      // Allow any origin on port 3006 (for Nginx proxy)
+      /^http:\/\/.*:3006$/,
+      /^https:\/\/.*:3006$/,
+      // Allow Hostinger VPS domain without port (when using Nginx)
+      /^https?:\/\/srv512766\.hstgr\.cloud$/,
+      /^https?:\/\/.*\.hstgr\.cloud$/,
     ];
 
 app.use(
@@ -110,10 +121,22 @@ app.use(
       // Allow requests with no origin (like mobile apps or curl requests)
       if (!origin) return callback(null, true);
 
-      if (allowedOrigins.indexOf(origin) !== -1) {
+      // Check if origin matches any allowed origin
+      const isAllowed = allowedOrigins.some(allowed => {
+        if (typeof allowed === 'string') {
+          return allowed === origin;
+        } else if (allowed instanceof RegExp) {
+          return allowed.test(origin);
+        }
+        return false;
+      });
+
+      if (isAllowed) {
         callback(null, true);
       } else {
-        callback(null, true); // Allow all origins for now (can be restricted later)
+        // In production with Nginx, allow all origins (Nginx handles CORS)
+        // This ensures compatibility with any domain/IP accessing via Nginx on port 3006
+        callback(null, true);
       }
     },
     credentials: true,
@@ -395,7 +418,20 @@ process.on('unhandledRejection', (reason, promise) => {
 // Handle uncaught exceptions (prevent crashes)
 process.on('uncaughtException', (error) => {
   logger.error('Uncaught Exception:', error);
-  // Log but don't exit immediately - give PM2 a chance to handle it
+  
+  // Handle memory errors gracefully
+  if (error.message && (error.message.includes('heap') || error.message.includes('memory') || error.message.includes('Allocation failed'))) {
+    logger.error('💥 Memory error detected. This usually happens when loading too much data at once.');
+    logger.error('💡 Solution: Reduce the limit parameter or use pagination with offset.');
+    logger.error('💡 Current memory usage:', {
+      heapUsed: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + ' MB',
+      heapTotal: Math.round(process.memoryUsage().heapTotal / 1024 / 1024) + ' MB',
+      rss: Math.round(process.memoryUsage().rss / 1024 / 1024) + ' MB'
+    });
+    // Let PM2 restart the process
+    process.exit(1);
+  }
+  
   // Only exit if it's a critical error
   if (error.code === 'EADDRINUSE' || error.code === 'EACCES') {
     logger.error('Critical error - exiting:', error.message);

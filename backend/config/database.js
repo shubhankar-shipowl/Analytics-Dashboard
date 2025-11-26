@@ -186,7 +186,7 @@ const query = async (sql, params = []) => {
     // Use Promise.race to add query timeout
     const queryPromise = pool.execute(sql, params);
     const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Query timeout after 30 seconds')), 30000)
+      setTimeout(() => reject(new Error('Query timeout after 120 seconds')), 120000)
     );
     
     const [results, fields] = await Promise.race([queryPromise, timeoutPromise]);
