@@ -1,0 +1,197 @@
+{
+  "project": "Analytics Dashboard",
+  "version": "1.0.0",
+  "systemRequirements": {
+    "nodejs": {
+      "minimum": "16.0.0",
+      "recommended": "20.x",
+      "tested": ["20.16.0", "20.19.4"]
+    },
+    "npm": {
+      "minimum": "7.0.0",
+      "recommended": "10.x"
+    },
+    "mysql": {
+      "minimum": "5.7",
+      "recommended": "8.0+"
+    },
+    "pm2": {
+      "required": true,
+      "global": true
+    }
+  },
+  "globalDependencies": [
+    {
+      "name": "pm2",
+      "purpose": "Process manager for Node.js applications",
+      "installation": "npm install -g pm2"
+    }
+  ],
+  "frontend": {
+    "location": "package.json",
+    "production": [
+      {
+        "name": "date-fns",
+        "version": "^2.30.0",
+        "installed": "2.30.0",
+        "purpose": "Date formatting and manipulation"
+      },
+      {
+        "name": "papaparse",
+        "version": "^5.4.1",
+        "installed": "5.5.3",
+        "purpose": "CSV/Excel file parsing"
+      },
+      {
+        "name": "react",
+        "version": "^18.2.0",
+        "installed": "18.3.1",
+        "purpose": "React UI library"
+      },
+      {
+        "name": "react-dom",
+        "version": "^18.2.0",
+        "installed": "18.3.1",
+        "purpose": "React DOM rendering"
+      },
+      {
+        "name": "react-scripts",
+        "version": "^5.0.1",
+        "installed": "5.0.1",
+        "purpose": "Create React App build tools"
+      },
+      {
+        "name": "recharts",
+        "version": "^2.10.3",
+        "installed": "2.15.4",
+        "purpose": "Charting library for React"
+      },
+      {
+        "name": "xlsx",
+        "version": "^0.18.5",
+        "installed": "0.18.5",
+        "purpose": "Excel file reading/writing"
+      }
+    ],
+    "development": [
+      {
+        "name": "concurrently",
+        "version": "^8.2.2",
+        "purpose": "Run multiple commands concurrently"
+      }
+    ]
+  },
+  "backend": {
+    "location": "backend/package.json",
+    "production": [
+      {
+        "name": "body-parser",
+        "version": "^1.20.2",
+        "installed": "1.20.3",
+        "purpose": "Parse HTTP request bodies"
+      },
+      {
+        "name": "compression",
+        "version": "^1.8.1",
+        "installed": "1.8.1",
+        "purpose": "Gzip compression middleware"
+      },
+      {
+        "name": "cors",
+        "version": "^2.8.5",
+        "installed": "2.8.5",
+        "purpose": "Cross-Origin Resource Sharing"
+      },
+      {
+        "name": "dotenv",
+        "version": "^16.3.1",
+        "installed": "16.6.1",
+        "purpose": "Environment variable management"
+      },
+      {
+        "name": "express",
+        "version": "^4.18.2",
+        "installed": "4.21.2",
+        "purpose": "Web application framework"
+      },
+      {
+        "name": "express-rate-limit",
+        "version": "^8.2.1",
+        "installed": "8.2.1",
+        "purpose": "Rate limiting middleware"
+      },
+      {
+        "name": "multer",
+        "version": "^1.4.5-lts.1",
+        "installed": "1.4.5-lts.2",
+        "purpose": "File upload handling"
+      },
+      {
+        "name": "mysql2",
+        "version": "^3.6.5",
+        "installed": "3.15.3",
+        "purpose": "MySQL database driver"
+      },
+      {
+        "name": "node-cache",
+        "version": "^5.1.2",
+        "installed": "5.1.2",
+        "purpose": "In-memory caching"
+      },
+      {
+        "name": "swagger-jsdoc",
+        "version": "^6.2.8",
+        "installed": "6.2.8",
+        "purpose": "Swagger/OpenAPI documentation"
+      },
+      {
+        "name": "swagger-ui-express",
+        "version": "^5.0.1",
+        "installed": "5.0.1",
+        "purpose": "Swagger UI for API docs"
+      },
+      {
+        "name": "xlsx",
+        "version": "^0.18.5",
+        "installed": "0.18.5",
+        "purpose": "Excel file processing"
+      }
+    ],
+    "development": [
+      {
+        "name": "concurrently",
+        "version": "^9.2.1",
+        "installed": "9.2.1",
+        "purpose": "Run multiple commands concurrently"
+      },
+      {
+        "name": "nodemon",
+        "version": "^3.0.2",
+        "installed": "3.1.10",
+        "purpose": "Auto-restart on file changes (dev only)"
+      }
+    ]
+  },
+  "installation": {
+    "global": "npm install -g pm2",
+    "frontend": "npm install",
+    "backend": "cd backend && npm install",
+    "all": [
+      "npm install -g pm2",
+      "npm install",
+      "cd backend && npm install"
+    ]
+  },
+  "technologyStack": {
+    "frontend": "React 18.2",
+    "backend": "Express.js 4.18",
+    "database": "MySQL (via mysql2)",
+    "processManager": "PM2",
+    "buildTool": "react-scripts (Create React App)",
+    "charting": "Recharts",
+    "fileProcessing": "xlsx, papaparse",
+    "apiDocumentation": "Swagger/OpenAPI"
+  },
+  "lastUpdated": "2024"
+}
+
