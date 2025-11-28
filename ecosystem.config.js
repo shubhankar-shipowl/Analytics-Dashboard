@@ -37,7 +37,7 @@ module.exports = {
         FRONTEND_PORT: 3006, // Frontend port
         // For VPS: Replace 'http://YOUR_VPS_IP' with your actual VPS IP or domain
         // Example: 'http://123.45.67.89' or 'http://yourdomain.com'
-        REACT_APP_API_URL: 'http://srv512766.hstgr.cloud:5009', // Change to your VPS IP for production
+        REACT_APP_API_URL: 'http://srv512766.hstgr.cloud:5009/api', // Change to your VPS IP for production
         NODE_OPTIONS: '--no-deprecation --max-old-space-size=4096', // Increased memory for production
         BROWSER: 'none', // Don't auto-open browser
         ALLOW_START_WITHOUT_DB: 'true', // Allow backend to start without database (for testing)
