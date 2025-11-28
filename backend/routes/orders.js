@@ -163,6 +163,193 @@ router.get('/', async (req, res) => {
 
 /**
  * @swagger
+ * /orders/products/unique:
+ *   get:
+ *     summary: Get all unique product names from the database
+ *     tags: [Orders]
+ *     description: Returns a list of all unique product names, useful for filter dropdowns
+ *     responses:
+ *       200:
+ *         description: List of unique product names
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.get('/products/unique', async (req, res) => {
+  try {
+    const { query } = require('../config/database');
+    const { pincode, startDate, endDate, allData, lifetime } = req.query;
+    
+    // Build WHERE clause with optional filters
+    let whereClause = 'WHERE product_name IS NOT NULL AND product_name != \'\' AND TRIM(product_name) != \'\'';
+    const params = [];
+    
+    // Filter by pincode if provided
+    if (pincode && pincode !== 'All' && pincode.trim() !== '') {
+      whereClause += ' AND pincode = ?';
+      params.push(pincode.trim());
+    }
+    
+    // Filter by date range if provided (for related filtering)
+    if (startDate && startDate.trim() !== '') {
+      whereClause += ' AND order_date >= ?';
+      params.push(startDate);
+    }
+    if (endDate && endDate.trim() !== '') {
+      const nextDay = new Date(endDate);
+      nextDay.setDate(nextDay.getDate() + 1);
+      whereClause += ' AND order_date < ?';
+      params.push(nextDay.toISOString().split('T')[0]);
+    }
+    
+    // Get unique product names from the database
+    // Using DISTINCT for better performance
+    const sql = `
+      SELECT DISTINCT product_name 
+      FROM orders 
+      ${whereClause}
+      ORDER BY product_name ASC
+    `;
+    
+    const results = await query(sql, params);
+    
+    // Extract product names from results
+    const products = results.map(row => String(row.product_name).trim()).filter(p => p.length > 0);
+    
+    logger.info(`📦 Fetched ${products.length} unique products for filter dropdown${pincode ? ` (filtered by pincode: ${pincode})` : ''}`);
+    
+    res.json({
+      success: true,
+      data: products
+    });
+  } catch (error) {
+    logger.error('Error fetching unique products:', error);
+    res.status(500).json({
+      success: false,
+      error: {
+        message: 'Failed to fetch unique products',
+        ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
+      }
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /orders/pincodes/unique:
+ *   get:
+ *     summary: Get all unique pincodes from the database
+ *     tags: [Orders]
+ *     description: Returns a list of all unique pincodes, useful for filter dropdowns
+ *     responses:
+ *       200:
+ *         description: List of unique pincodes
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.get('/pincodes/unique', async (req, res) => {
+  try {
+    const { query } = require('../config/database');
+    const { products, product, startDate, endDate, allData, lifetime } = req.query;
+    
+    // Build WHERE clause with optional filters
+    let whereClause = 'WHERE pincode IS NOT NULL AND pincode != \'\' AND TRIM(pincode) != \'\'';
+    const params = [];
+    
+    // Filter by product(s) if provided
+    if (products && products.trim() !== '') {
+      const productList = products.split(',').map(p => p.trim()).filter(p => p);
+      if (productList.length > 0) {
+        const placeholders = productList.map(() => '?').join(',');
+        whereClause += ` AND product_name IN (${placeholders})`;
+        params.push(...productList);
+      }
+    } else if (product && product.trim() !== '') {
+      whereClause += ' AND product_name LIKE ?';
+      params.push(`%${product.trim()}%`);
+    }
+    
+    // Filter by date range if provided (for related filtering)
+    if (startDate && startDate.trim() !== '') {
+      whereClause += ' AND order_date >= ?';
+      params.push(startDate);
+    }
+    if (endDate && endDate.trim() !== '') {
+      const nextDay = new Date(endDate);
+      nextDay.setDate(nextDay.getDate() + 1);
+      whereClause += ' AND order_date < ?';
+      params.push(nextDay.toISOString().split('T')[0]);
+    }
+    
+    // Get all unique pincodes from the database
+    // Using DISTINCT for better performance
+    // Order by numeric value if possible, otherwise alphabetically
+    const sql = `
+      SELECT DISTINCT pincode 
+      FROM orders 
+      ${whereClause}
+      ORDER BY 
+        CASE 
+          WHEN pincode REGEXP '^[0-9]+$' THEN CAST(pincode AS UNSIGNED)
+          ELSE 999999999
+        END ASC,
+        pincode ASC
+    `;
+    
+    const results = await query(sql, params);
+    
+    // Extract pincodes from results
+    const pincodes = results.map(row => String(row.pincode).trim()).filter(p => p.length > 0);
+    
+    logger.info(`📍 Fetched ${pincodes.length} unique pincodes for filter dropdown${products || product ? ` (filtered by product)` : ''}`);
+    
+    res.json({
+      success: true,
+      data: pincodes
+    });
+  } catch (error) {
+    logger.error('Error fetching unique pincodes:', error);
+    res.status(500).json({
+      success: false,
+      error: {
+        message: 'Failed to fetch unique pincodes',
+        ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
+      }
+    });
+  }
+});
+
+/**
+ * @swagger
  * /orders/{id}:
  *   get:
  *     summary: Get a single order by ID

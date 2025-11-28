@@ -297,12 +297,20 @@ class Order {
           const placeholders = productList.map(() => '?').join(',');
           sql += ` AND product_name IN (${placeholders})`;
           params.push(...productList);
+          logger.info(`🔍 Product filter (multiple): ${productList.length} products - ${productList.slice(0, 3).join(', ')}${productList.length > 3 ? '...' : ''}`);
         }
       }
 
       if (filters.pincode) {
         sql += ' AND pincode = ?';
         params.push(filters.pincode);
+        logger.info(`📍 Pincode filter: ${filters.pincode}`);
+      }
+      
+      // Log combined filter if both are present
+      if (filters.products && filters.pincode) {
+        const productList = filters.products.split(',').map(p => p.trim()).filter(p => p);
+        logger.info(`🔗 COMBINED FILTER ACTIVE: ${productList.length} product(s) + pincode ${filters.pincode} = showing data for these products in this pincode`);
       }
 
       if (filters.status) {
@@ -381,6 +389,7 @@ class Order {
           const placeholders = productList.map(() => '?').join(',');
           sql += ` AND product_name IN (${placeholders})`;
           params.push(...productList);
+          logger.info(`🔍 Product filter (multiple): ${productList.length} products - ${productList.slice(0, 3).join(', ')}${productList.length > 3 ? '...' : ''}`);
         }
       }
 

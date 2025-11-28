@@ -34,7 +34,7 @@ import {
   getTopNDRCities as fetchTopNDRCities,
   getGoodBadPincodes as fetchGoodBadPincodes
 } from './utils/dataService';
-import { getAPIBaseURLWithoutPath } from './utils/api';
+import { getAPIBaseURLWithoutPath, ordersAPI } from './utils/api';
 import KPISection from './components/KPISection';
 import Filters from './components/Filters';
 import FileUpload from './components/FileUpload';
@@ -56,6 +56,8 @@ function App() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [backendConnected, setBackendConnected] = useState(false);
+  const [allUniqueProducts, setAllUniqueProducts] = useState([]); // All products from database
+  const [allUniquePincodes, setAllUniquePincodes] = useState([]); // All pincodes from database
   
   // Filters
   const [dateFilter, setDateFilter] = useState('Lifetime');
@@ -199,7 +201,7 @@ function App() {
   const isInitialLoadRef = React.useRef(true);
 
   useEffect(() => {
-    // Load data from backend API or local Excel file with date filters
+    // Load data from backend API or local Excel file with all filters (date, product, pincode)
     const fetchData = async () => {
       try {
         // Only show full-page loader on initial load, use refreshing state for filter changes
@@ -209,12 +211,36 @@ function App() {
           setRefreshing(true);
         }
         setError(null); // Clear any previous errors
-        const dateFilters = getDateFilters();
-        console.log('📅 Loading data with date filters:', { dateFilter, dateFilters });
+        
+        // Build filters including date, product, and pincode filters
+        const filters = getDateFilters();
+        
+        // Add product filter (supports multiple products)
+        if (productFilter && productFilter.length > 0) {
+          filters.products = productFilter.join(','); // Use 'products' for multiple
+        }
+        
+        // Add pincode filter
+        if (pincodeFilter !== 'All' && pincodeFilter !== '') {
+          filters.pincode = pincodeFilter;
+        }
+        
+        // Log filter details for debugging
+        const filterDetails = {
+          dateFilter,
+          productCount: productFilter.length,
+          products: productFilter,
+          pincode: pincodeFilter !== 'All' ? pincodeFilter : 'All',
+          backendFilters: filters
+        };
+        console.log('📅 Loading data with ALL filters (combined):', filterDetails);
+        if (productFilter.length > 0 && pincodeFilter !== 'All') {
+          console.log(`🔗 COMBINED FILTER: ${productFilter.length} product(s) + pincode ${pincodeFilter} = showing data for these products in this pincode`);
+        }
         
         // Check backend status before loading
         const wasBackendAvailable = isUsingBackend();
-        const loadedData = await loadData(false, dateFilters);
+        const loadedData = await loadData(false, filters);
         const isBackendAvailable = isUsingBackend();
         
         // Update backend connection status
@@ -225,7 +251,7 @@ function App() {
           console.log(`🔄 Backend status changed: ${wasBackendAvailable} → ${isBackendAvailable}`);
         }
         
-        console.log(`✅ Loaded ${loadedData.length} records with date filter: ${dateFilter}`);
+        console.log(`✅ Loaded ${loadedData.length} records with filters: date=${dateFilter}, products=${productFilter.length}, pincode=${pincodeFilter}`);
         setData(loadedData);
         if (isInitialLoadRef.current) {
           setLoading(false);
@@ -247,7 +273,62 @@ function App() {
     };
     
     fetchData();
-  }, [dateFilter, customStartDate, customEndDate, getDateFilters]);
+  }, [dateFilter, customStartDate, customEndDate, productFilter, pincodeFilter, getDateFilters]);
+  
+  // Fetch all unique products and pincodes from database when backend is connected
+  // Also refetch when filters change to show related options
+  useEffect(() => {
+    const fetchUniqueValues = async () => {
+      // Only fetch if using backend
+      if (!isUsingBackend() && !backendConnected) {
+        console.log('⏳ Waiting for backend connection before fetching unique values...');
+        return;
+      }
+      
+      try {
+        // Build date filters for related filtering
+        const dateFilters = getDateFilters();
+        
+        // Fetch unique products (filtered by pincode if selected)
+        console.log('📦 Fetching unique products from database...', { pincodeFilter });
+        const productsFilters = { ...dateFilters };
+        if (pincodeFilter !== 'All' && pincodeFilter !== '') {
+          productsFilters.pincode = pincodeFilter;
+        }
+        const productsResponse = await ordersAPI.getUniqueProducts(productsFilters);
+        if (productsResponse && productsResponse.success && productsResponse.data) {
+          const products = productsResponse.data.map(p => String(p).trim()).filter(p => p.length > 0);
+          setAllUniqueProducts(products);
+          console.log(`✅ Loaded ${products.length} unique products${pincodeFilter !== 'All' ? ` (filtered by pincode: ${pincodeFilter})` : ''}`);
+        } else {
+          console.warn('⚠️ Unexpected response format from getUniqueProducts:', productsResponse);
+        }
+        
+        // Fetch unique pincodes (filtered by products if selected)
+        console.log('📍 Fetching unique pincodes from database...', { productFilter });
+        const pincodesFilters = { ...dateFilters };
+        if (productFilter && productFilter.length > 0) {
+          pincodesFilters.products = productFilter;
+        }
+        const pincodesResponse = await ordersAPI.getUniquePincodes(pincodesFilters);
+        if (pincodesResponse && pincodesResponse.success && pincodesResponse.data) {
+          const pincodes = pincodesResponse.data.map(p => String(p).trim()).filter(p => p.length > 0);
+          setAllUniquePincodes(pincodes);
+          console.log(`✅ Loaded ${pincodes.length} unique pincodes${productFilter.length > 0 ? ` (filtered by ${productFilter.length} product(s))` : ''}`);
+        } else {
+          console.warn('⚠️ Unexpected response format from getUniquePincodes:', pincodesResponse);
+        }
+      } catch (error) {
+        console.warn('⚠️ Failed to fetch unique values, will extract from loaded data:', error.message);
+        // Don't set error state - fallback to extracting from data
+      }
+    };
+    
+    // Fetch immediately if backend is available, or wait for backendConnected to become true
+    if (backendConnected || isUsingBackend()) {
+      fetchUniqueValues();
+    }
+  }, [backendConnected, productFilter, pincodeFilter, getDateFilters]); // Refetch when filters change
 
   // Handle file upload success
   const handleUploadSuccess = async (result) => {
@@ -268,6 +349,39 @@ function App() {
       // Update backend connection status after reload
       const isBackendAvailable = isUsingBackend();
       setBackendConnected(isBackendAvailable);
+      
+      // Refresh unique products and pincodes after upload (new values may have been added)
+      if (isBackendAvailable) {
+        try {
+          const dateFilters = getDateFilters();
+          
+          // Refresh products (with current pincode filter if any)
+          const productsFilters = { ...dateFilters };
+          if (pincodeFilter !== 'All' && pincodeFilter !== '') {
+            productsFilters.pincode = pincodeFilter;
+          }
+          const productsResponse = await ordersAPI.getUniqueProducts(productsFilters);
+          if (productsResponse && productsResponse.success && productsResponse.data) {
+            const products = productsResponse.data.map(p => String(p).trim()).filter(p => p.length > 0);
+            setAllUniqueProducts(products);
+            console.log(`✅ Refreshed ${products.length} unique products after upload`);
+          }
+          
+          // Refresh pincodes (with current product filter if any)
+          const pincodesFilters = { ...dateFilters };
+          if (productFilter && productFilter.length > 0) {
+            pincodesFilters.products = productFilter;
+          }
+          const pincodesResponse = await ordersAPI.getUniquePincodes(pincodesFilters);
+          if (pincodesResponse && pincodesResponse.success && pincodesResponse.data) {
+            const pincodes = pincodesResponse.data.map(p => String(p).trim()).filter(p => p.length > 0);
+            setAllUniquePincodes(pincodes);
+            console.log(`✅ Refreshed ${pincodes.length} unique pincodes after upload`);
+          }
+        } catch (error) {
+          console.warn('⚠️ Failed to refresh unique values after upload:', error.message);
+        }
+      }
       
       if (loadedData && loadedData.length > 0) {
         setData(loadedData);
@@ -313,22 +427,39 @@ function App() {
     let filtered = [...data];
 
     // Apply product filter (supports multiple products)
+    // Note: Backend should already filter by product, but we apply locally as well for safety
     if (productFilter && productFilter.length > 0) {
+      const beforeCount = filtered.length;
       filtered = filtered.filter(row => {
-        const rowProduct = row.product || row['Product Name'] || '';
-        const productStr = String(rowProduct).trim();
-        return productFilter.some(filterProduct => 
-          String(filterProduct).trim() === productStr
-        );
+        const rowProduct = row.product || row['Product Name'] || row.product_name || '';
+        const productStr = String(rowProduct).trim().toLowerCase();
+        return productFilter.some(filterProduct => {
+          const filterStr = String(filterProduct).trim().toLowerCase();
+          // Use case-insensitive exact match (backend uses IN which is case-sensitive in MySQL)
+          // But we normalize to lowercase for comparison
+          return filterStr === productStr;
+        });
       });
+      console.log(`🔍 Product filter: ${beforeCount} → ${filtered.length} rows (filter: ${productFilter.join(', ')})`);
     }
 
     // Apply pincode filter
+    // Note: Backend should already filter by pincode, but we apply locally as well for safety
     if (pincodeFilter !== 'All' && pincodeFilter !== '') {
+      const beforeCount = filtered.length;
       filtered = filtered.filter(row => {
         const rowPincode = row.pincode || row['Pincode'] || '';
         return String(rowPincode).trim() === String(pincodeFilter).trim();
       });
+      console.log(`🔍 Pincode filter: ${beforeCount} → ${filtered.length} rows (filter: ${pincodeFilter})`);
+    }
+    
+    // Log combined filter result
+    if ((productFilter && productFilter.length > 0) || (pincodeFilter !== 'All' && pincodeFilter !== '')) {
+      const activeFilters = [];
+      if (productFilter && productFilter.length > 0) activeFilters.push(`${productFilter.length} product(s)`);
+      if (pincodeFilter !== 'All' && pincodeFilter !== '') activeFilters.push(`pincode: ${pincodeFilter}`);
+      console.log(`✅ Combined filter result: ${filtered.length} rows matching ${activeFilters.join(' + ')}`);
     }
 
     console.log(`📊 Filtered data: ${filtered.length} rows (from ${data.length} total after date filter)`);
@@ -773,6 +904,8 @@ function App() {
   }, [debouncedFetchAnalytics]);
 
   // Get filtered data for extracting unique values (data is already date-filtered from backend)
+  // Note: This is only used for fallback when API data isn't available
+  // The actual filtering should be done by the backend
   const dataForFilterOptions = React.useMemo(() => {
     if (!data || data.length === 0) return [];
     
@@ -789,43 +922,63 @@ function App() {
       });
     }
     
-    return filtered;
-  }, [data, productFilter]);
-
-  // Get unique products for filter dropdown (data is already date-filtered from backend)
-  const uniqueProducts = React.useMemo(() => {
-    const products = new Set();
+    // Apply pincode filter (if selected) - for fallback extraction only
+    if (pincodeFilter !== 'All' && pincodeFilter !== '') {
+      filtered = filtered.filter(row => {
+        const rowPincode = row.pincode || row['Pincode'] || '';
+        return String(rowPincode).trim() === String(pincodeFilter).trim();
+      });
+    }
     
-    // Data is already filtered by date from backend, no need to filter again
+    return filtered;
+  }, [data, productFilter, pincodeFilter]);
+
+  // Get unique products for filter dropdown
+  // Use allUniqueProducts from API (fetches ALL products from database, filtered by pincode if selected)
+  // Fallback to extracting from data if API products not loaded yet
+  const uniqueProducts = React.useMemo(() => {
+    // If we have products from API, use those (they are already filtered by pincode if one is selected)
+    if (allUniqueProducts && allUniqueProducts.length > 0) {
+      console.log(`📦 Using ${allUniqueProducts.length} products for dropdown${pincodeFilter !== 'All' ? ` (filtered by pincode: ${pincodeFilter})` : ''}`);
+      return allUniqueProducts;
+    }
+    
+    // Fallback: Extract from current data (limited, but better than nothing)
+    const products = new Set();
     data.forEach(row => {
-      // Extract product from multiple possible field names
-      const product = row.product || row['Product Name'] || '';
-      if (product && String(product).trim()) {
-        products.add(String(product).trim());
+      const product = row.product || row['Product Name'] || row.product_name || '';
+      const productStr = String(product).trim();
+      if (productStr && productStr.length > 0) {
+        products.add(productStr);
       }
     });
-    return Array.from(products).sort();
-  }, [data]);
+    const fallbackProducts = Array.from(products).sort();
+    console.log(`📦 Using ${fallbackProducts.length} products from loaded data (fallback)`);
+    return fallbackProducts;
+  }, [allUniqueProducts, data, pincodeFilter]);
 
-  // Get unique pincodes for filter dropdown (filtered by date AND product)
+  // Get unique pincodes for filter dropdown
+  // Use allUniquePincodes from API (fetches ALL pincodes from database, filtered by products if selected)
+  // Fallback to extracting from data if API pincodes not loaded yet
   const uniquePincodes = React.useMemo(() => {
-    const pincodes = new Set();
+    // If we have pincodes from API, use those (they are already filtered by products if any are selected)
+    if (allUniquePincodes && allUniquePincodes.length > 0) {
+      console.log(`📍 Using ${allUniquePincodes.length} pincodes for dropdown${productFilter.length > 0 ? ` (filtered by ${productFilter.length} product(s))` : ''}`);
+      return allUniquePincodes;
+    }
     
-    // Use the filtered data that respects date and product filters
+    // Fallback: Extract from current data (limited, but better than nothing)
+    const pincodes = new Set();
     dataForFilterOptions.forEach(row => {
-      // Extract pincode - handle both string and numeric values
-      const pincode = row.pincode || row['Pincode'];
-      if (pincode !== null && pincode !== undefined && pincode !== '') {
-        // Convert to string and trim whitespace
-        const pincodeStr = String(pincode).trim();
-        if (pincodeStr) {
-          pincodes.add(pincodeStr);
-        }
+      const pincode = row.pincode || row['Pincode'] || '';
+      const pincodeStr = String(pincode).trim();
+      if (pincodeStr && pincodeStr.length > 0) {
+        pincodes.add(pincodeStr);
       }
     });
     
     // Sort pincodes numerically if they're all numbers, otherwise alphabetically
-    return Array.from(pincodes).sort((a, b) => {
+    const fallbackPincodes = Array.from(pincodes).sort((a, b) => {
       const numA = Number(a);
       const numB = Number(b);
       if (!isNaN(numA) && !isNaN(numB)) {
@@ -833,17 +986,31 @@ function App() {
       }
       return a.localeCompare(b);
     });
-  }, [dataForFilterOptions]);
+    console.log(`📍 Using ${fallbackPincodes.length} pincodes from loaded data (fallback)`);
+    return fallbackPincodes;
+  }, [allUniquePincodes, dataForFilterOptions, productFilter]);
 
-  // Reset pincode filter if current selection is no longer valid after filters change
+  // Reset pincode filter if current selection is no longer valid after product filter changes
   useEffect(() => {
     if (pincodeFilter !== 'All' && pincodeFilter !== '' && uniquePincodes.length > 0) {
       if (!uniquePincodes.includes(pincodeFilter)) {
-        console.log(`Resetting pincode filter: ${pincodeFilter} is no longer available`);
+        console.log(`🔄 Resetting pincode filter: ${pincodeFilter} is no longer available for selected product(s)`);
         setPincodeFilter('All');
       }
     }
   }, [uniquePincodes, pincodeFilter]);
+
+  // Reset product filter if current selections are no longer valid after pincode filter changes
+  useEffect(() => {
+    if (productFilter && productFilter.length > 0 && uniqueProducts.length > 0) {
+      const invalidProducts = productFilter.filter(p => !uniqueProducts.includes(p));
+      if (invalidProducts.length > 0) {
+        console.log(`🔄 Removing invalid products from filter: ${invalidProducts.join(', ')} (not available for selected pincode)`);
+        const validProducts = productFilter.filter(p => uniqueProducts.includes(p));
+        setProductFilter(validProducts.length > 0 ? validProducts : []);
+      }
+    }
+  }, [uniqueProducts, productFilter]);
 
   // Chart data is now fetched from backend APIs in useEffect above
 

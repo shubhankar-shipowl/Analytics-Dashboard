@@ -23,6 +23,15 @@ const Filters = ({
   const [showPincodeDropdown, setShowPincodeDropdown] = useState(false);
   const productDropdownRef = useRef(null);
   
+  // Debug: Log when pincodes change
+  useEffect(() => {
+    if (pincodes && pincodes.length > 0) {
+      console.log(`📍 Pincodes loaded in Filters component: ${pincodes.length} pincodes available`);
+    } else {
+      console.warn('⚠️ No pincodes available in Filters component');
+    }
+  }, [pincodes]);
+  
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -43,17 +52,57 @@ const Filters = ({
   }, [showProductDropdown]);
 
   const filteredProducts = useMemo(() => {
-    if (!productSearch) return products;
-    return products.filter(p => 
-      String(p).toLowerCase().includes(productSearch.toLowerCase())
-    );
+    if (!productSearch || !productSearch.trim()) return products;
+    
+    const searchTerm = productSearch.toLowerCase().trim();
+    
+    // Filter products that contain the search term (case-insensitive)
+    const filtered = products.filter(p => {
+      if (!p) return false;
+      const productName = String(p).toLowerCase().trim();
+      return productName.includes(searchTerm);
+    });
+    
+    // Debug logging
+    if (productSearch && productSearch.trim()) {
+      console.log(`🔍 Searching for "${productSearch}": Found ${filtered.length} products out of ${products.length} total`);
+      if (filtered.length > 0 && filtered.length <= 10) {
+        console.log('📋 Matching products:', filtered);
+      }
+    }
+    
+    return filtered;
   }, [products, productSearch]);
 
   const filteredPincodes = useMemo(() => {
-    if (!pincodeSearch) return pincodes;
-    return pincodes.filter(p => 
-      String(p).toLowerCase().includes(pincodeSearch.toLowerCase())
-    );
+    // If no search term, return all pincodes
+    if (!pincodeSearch || !pincodeSearch.trim()) {
+      console.log(`📍 Pincode search empty: Showing all ${pincodes.length} pincodes`);
+      return pincodes;
+    }
+    
+    const searchTerm = pincodeSearch.toLowerCase().trim();
+    
+    // Filter pincodes that contain the search term (case-insensitive)
+    // Also support exact match and starts-with match for better UX
+    const filtered = pincodes.filter(p => {
+      if (!p) return false;
+      const pincodeStr = String(p).toLowerCase().trim();
+      // Support: exact match, starts with, or contains
+      return pincodeStr === searchTerm || 
+             pincodeStr.startsWith(searchTerm) || 
+             pincodeStr.includes(searchTerm);
+    });
+    
+    // Debug logging
+    console.log(`🔍 Searching for pincode "${pincodeSearch}": Found ${filtered.length} pincodes out of ${pincodes.length} total`);
+    if (filtered.length > 0 && filtered.length <= 10) {
+      console.log('📍 Matching pincodes:', filtered);
+    } else if (filtered.length === 0 && pincodes.length > 0) {
+      console.warn(`⚠️ No pincodes found matching "${pincodeSearch}". Available pincodes: ${pincodes.slice(0, 5).join(', ')}${pincodes.length > 5 ? '...' : ''}`);
+    }
+    
+    return filtered;
   }, [pincodes, pincodeSearch]);
 
   return (
@@ -274,19 +323,70 @@ const Filters = ({
       <div className="filter-group">
         <label>Search by Pincode</label>
         <div className="searchable-select">
+          {/* Show selected pincode as a tag/chip */}
+          {pincodeFilter !== 'All' && (
+            <div style={{ 
+              display: 'flex', 
+              flexWrap: 'wrap', 
+              gap: '6px', 
+              marginBottom: '8px',
+              minHeight: '32px',
+              padding: '4px',
+              border: '1px solid #e2e8f0',
+              borderRadius: '6px',
+              background: 'white'
+            }}>
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '4px 8px',
+                  background: 'var(--primary-color)',
+                  color: 'white',
+                  borderRadius: '4px',
+                  fontSize: '0.85rem',
+                  cursor: 'pointer'
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onPincodeFilterChange('All');
+                  setPincodeSearch('');
+                }}
+              >
+                {pincodeFilter}
+                <span style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>×</span>
+              </span>
+            </div>
+          )}
           <input
             type="text"
             placeholder="Type to search pincodes..."
-            value={pincodeFilter !== 'All' ? pincodeFilter : pincodeSearch}
+            value={pincodeSearch}
             onChange={(e) => {
-              setPincodeSearch(e.target.value);
-              setShowPincodeDropdown(true);
+              const value = e.target.value;
+              setPincodeSearch(value);
+              // Always show dropdown when typing
+              if (value.trim()) {
+                setShowPincodeDropdown(true);
+              } else {
+                // Show all pincodes when search is cleared
+                setShowPincodeDropdown(true);
+              }
             }}
-            onFocus={() => setShowPincodeDropdown(true)}
-            onBlur={() => setTimeout(() => setShowPincodeDropdown(false), 200)}
+            onFocus={() => {
+              setShowPincodeDropdown(true);
+              console.log(`📍 Pincode input focused. Available pincodes: ${pincodes.length}`);
+            }}
+            onBlur={() => {
+              // Delay closing to allow clicks on dropdown items
+              setTimeout(() => {
+                setShowPincodeDropdown(false);
+              }, 200);
+            }}
           />
           {showPincodeDropdown && (
-            <div className="dropdown-list">
+            <div className="dropdown-list" style={{ maxHeight: '300px', overflowY: 'auto' }}>
               <div 
                 className="dropdown-item"
                 onClick={() => {
@@ -294,24 +394,57 @@ const Filters = ({
                   setPincodeSearch('');
                   setShowPincodeDropdown(false);
                 }}
+                style={{
+                  fontWeight: 'bold',
+                  borderBottom: '1px solid #e2e8f0',
+                  paddingBottom: '8px',
+                  marginBottom: '4px'
+                }}
               >
                 All Pincodes
               </div>
-              {filteredPincodes.slice(0, 50).map(pincode => (
-                <div 
-                  key={pincode} 
-                  className="dropdown-item"
-                  onClick={() => {
-                    onPincodeFilterChange(pincode);
-                    setPincodeSearch('');
-                    setShowPincodeDropdown(false);
-                  }}
-                >
-                  {pincode}
+              {filteredPincodes.length > 0 ? (
+                filteredPincodes.slice(0, 100).map(pincode => (
+                  <div 
+                    key={pincode} 
+                    className="dropdown-item"
+                    onClick={() => {
+                      onPincodeFilterChange(pincode);
+                      setPincodeSearch('');
+                      setShowPincodeDropdown(false);
+                    }}
+                    style={{
+                      background: pincodeFilter === pincode ? '#f0f9ff' : 'white',
+                      borderLeft: pincodeFilter === pincode ? '3px solid var(--primary-color)' : '3px solid transparent',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {pincode}
+                    {pincodeFilter === pincode && (
+                      <span style={{ color: 'var(--primary-color)', fontSize: '0.9rem', fontWeight: 'bold', marginLeft: '8px' }}>✓</span>
+                    )}
+                  </div>
+                ))
+              ) : (
+                <div className="dropdown-item" style={{ 
+                  color: '#999', 
+                  fontStyle: 'italic',
+                  cursor: 'default'
+                }}>
+                  {pincodes.length === 0 
+                    ? 'No pincodes available' 
+                    : `No pincodes found matching "${pincodeSearch}"`}
                 </div>
-              ))}
-              {filteredPincodes.length === 0 && (
-                <div className="dropdown-item">No pincodes found</div>
+              )}
+              {filteredPincodes.length > 100 && (
+                <div className="dropdown-item" style={{ 
+                  fontSize: '0.85rem', 
+                  color: 'var(--text-secondary)', 
+                  fontStyle: 'italic',
+                  cursor: 'default'
+                }}>
+                  Showing first 100 results. Use search to filter.
+                </div>
               )}
             </div>
           )}

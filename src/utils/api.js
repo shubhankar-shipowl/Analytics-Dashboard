@@ -143,6 +143,40 @@ export const ordersAPI = {
     return apiCall(`/orders${queryString ? '?' + queryString : ''}`);
   },
 
+  // Get all unique product names (optionally filtered by pincode and date)
+  getUniqueProducts: (filters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.pincode && filters.pincode !== 'All') {
+      params.append('pincode', filters.pincode);
+    }
+    if (filters.startDate) {
+      params.append('startDate', filters.startDate);
+    }
+    if (filters.endDate) {
+      params.append('endDate', filters.endDate);
+    }
+    const queryString = params.toString();
+    return apiCall(`/orders/products/unique${queryString ? '?' + queryString : ''}`);
+  },
+
+  // Get all unique pincodes (optionally filtered by products and date)
+  getUniquePincodes: (filters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.products && filters.products.length > 0) {
+      params.append('products', filters.products.join(','));
+    } else if (filters.product) {
+      params.append('product', filters.product);
+    }
+    if (filters.startDate) {
+      params.append('startDate', filters.startDate);
+    }
+    if (filters.endDate) {
+      params.append('endDate', filters.endDate);
+    }
+    const queryString = params.toString();
+    return apiCall(`/orders/pincodes/unique${queryString ? '?' + queryString : ''}`);
+  },
+
   // Get single order
   getById: (id) => apiCall(`/orders/${id}`),
 
