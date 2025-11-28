@@ -28,6 +28,7 @@
     "import:excel:clear": "cd backend && npm run import:excel:clear",
     "pm2:start": "pm2 start ecosystem.config.js --only dashboard",
     "pm2:start:prod": "pm2 start ecosystem.config.js --only dashboard --env production",
+    "pm2:fix": "./fix-pm2.sh",
     "pm2:stop": "pm2 stop dashboard",
     "pm2:restart": "pm2 restart dashboard",
     "pm2:delete": "pm2 delete dashboard",

@@ -143,21 +143,62 @@ check_ports() {
     fi
     echo ""
 }
+# Function to fix PM2 corruption
+fix_pm2_corruption() {
+    print_info "Checking PM2 for corruption issues..."
+    
+    # Try to list processes - if it fails, PM2 is corrupted
+    if ! pm2 list > /dev/null 2>&1; then
+        print_warning "PM2 appears to be corrupted. Fixing..."
+        
+        # Kill PM2 daemon
+        pm2 kill 2>/dev/null || true
+        sleep 2
+        
+        # Try to start PM2 daemon
+        pm2 ping 2>/dev/null || true
+        sleep 1
+        
+        print_success "PM2 corruption fixed"
+    else
+        # Check for stale processes
+        if pm2 list 2>&1 | grep -q "Cannot read properties\|TypeError\|undefined"; then
+            print_warning "PM2 has stale processes. Cleaning up..."
+            
+            # Stop and delete all processes
+            pm2 stop all 2>/dev/null || true
+            pm2 delete all 2>/dev/null || true
+            
+            # Kill PM2 daemon
+            pm2 kill 2>/dev/null || true
+            sleep 2
+            
+            # Restart PM2 daemon
+            pm2 ping 2>/dev/null || true
+            sleep 1
+            
+            print_success "PM2 cleaned up"
+        fi
+    fi
+}
 
 # Function to check if process is already running
 check_running() {
-    if pm2 list | grep -q "dashboard"; then
+    # First fix any PM2 corruption
+    fix_pm2_corruption
+    
+    if pm2 list 2>/dev/null | grep -q "dashboard"; then
         print_warning "Dashboard is already running!"
         echo ""
         print_info "Current status:"
-        pm2 status dashboard
+        pm2 status dashboard 2>/dev/null || true
         echo ""
         read -p "Do you want to restart it? (y/n) " -n 1 -r
         echo ""
         if [[ $REPLY =~ ^[Yy]$ ]]; then
             print_info "Stopping existing process..."
-            pm2 stop dashboard
-            pm2 delete dashboard
+            pm2 stop dashboard 2>/dev/null || true
+            pm2 delete dashboard 2>/dev/null || true
             check_ports  # Free ports before restarting
             print_info "Restarting dashboard..."
             pm2 restart dashboard --update-env 2>/dev/null || pm2 start ecosystem.config.js --only dashboard --env production
@@ -187,6 +228,9 @@ start_app() {
     
     # Check and free ports
     check_ports
+    
+    # Fix PM2 corruption first
+    fix_pm2_corruption
     
     # Check if already running
     check_running
