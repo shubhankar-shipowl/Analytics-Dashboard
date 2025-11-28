@@ -1,6 +1,12 @@
 # Analytics Dashboard - Requirements File
-# This file lists all dependencies for easy reference
-# For Node.js projects, use package.json files for actual installation
+# ============================================
+# IMPORTANT: This is a NODE.JS project, NOT Python!
+# ============================================
+# DO NOT use: pip install -r requirements.txt
+# 
+# This file is for REFERENCE ONLY.
+# For actual installation, use npm commands below.
+# ============================================
 
 # ============================================
 # SYSTEM REQUIREMENTS
@@ -52,9 +58,23 @@ concurrently
 nodemon
 
 # ============================================
-# INSTALLATION COMMANDS
+# INSTALLATION COMMANDS (USE THESE!)
 # ============================================
-# Global: npm install -g pm2
-# Frontend: npm install (in root directory)
-# Backend: cd backend && npm install
+# 
+# Step 1: Install global dependencies
+npm install -g pm2
+#
+# Step 2: Install frontend dependencies
+npm install
+#
+# Step 3: Install backend dependencies
+cd backend && npm install
+#
+# OR use the automated start script:
+./start.sh production
+#
+# ============================================
+# DO NOT USE: pip install -r requirements.txt
+# This is a Node.js project, not Python!
+# ============================================
 
